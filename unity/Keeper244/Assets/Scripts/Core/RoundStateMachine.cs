@@ -14,44 +14,14 @@ namespace Keeper244.Core
         Complete,
     }
 
-    public sealed class ShotResult
-    {
-        /// <summary>0-based.</summary>
-        public int ShotIndex;
-        public int ShotCount;
-        /// <summary>Target zone slot.</summary>
-        public int Target;
-        /// <summary>Keeper's input slot5 at arrival.</summary>
-        public int KeeperSlot5;
-        /// <summary>Keeper's zone slot at arrival (sign(slot5) in 3-zone levels).</summary>
-        public int KeeperZoneSlot;
-        public bool Saved;
-        /// <summary>Times on the state machine's own clock (seconds since Start).</summary>
-        public double CueTime;
-        public double KickTime;
-        public double ArrivalTime;
-        /// <summary>Times the player left rest during this shot's WAIT_REST (brief §3.9).</summary>
-        public int FalseActivations;
-    }
-
-    public sealed class LevelResult
-    {
-        public string LevelName;
-        public int Shots;
-        public int Saves;
-        public float UnlockSaveFraction;
-        public double SaveFraction => Shots == 0 ? 0.0 : (double)Saves / Shots;
-        public bool Passed => SaveFraction >= UnlockSaveFraction;
-    }
-
     /// <summary>
     /// The penalty round loop, free of Unity so it is unit-tested directly:
     ///
     ///   WAIT_REST ─► CUE ─► (KICK) ─► FLIGHT ─► (RESOLVE) ─► FEEDBACK ─► next shot | COMPLETE
     ///
-    /// Call Tick every frame with the frame time, the keeper's current input slot5 and whether
-    /// the player is at rest. Timer overshoot carries into the next state, so CUE + FLIGHT last
-    /// exactly T_cue + T_flight on this clock regardless of frame rate.
+    /// Call Tick every frame with the frame time and the current input. Timer overshoot carries
+    /// into the next state, so CUE + FLIGHT last exactly T_cue + T_flight on this clock regardless
+    /// of frame rate. It also scores each shot (brief §3.6) and measures the §3.9 metrics.
     /// </summary>
     public sealed class RoundStateMachine
     {
@@ -66,11 +36,24 @@ namespace Keeper244.Core
         double cueTime;
         double kickTime;
 
+        // per-shot behaviour, measured during CUE + FLIGHT
+        double reactionTime;
+        int firstMoveSign;
+        bool wrongDirection;
+        bool overshoot;
+        double dwell;
+        double dwellBiceps;
+        double dwellTriceps;
+
         public RoundState State { get; private set; } = RoundState.Idle;
         /// <summary>0-based index of the current shot.</summary>
         public int ShotIndex { get; private set; }
         public int ShotCount => targets.Count;
         public int Saves { get; private set; }
+        public int Score { get; private set; }
+        /// <summary>Saves in a row so far (resets on a goal).</summary>
+        public int Streak { get; private set; }
+        public int BestStreak { get; private set; }
         /// <summary>Seconds since Start on this machine's clock.</summary>
         public double Clock { get; private set; }
         public LevelSettings Settings => settings;
@@ -97,6 +80,7 @@ namespace Keeper244.Core
         {
             this.settings = settings ?? throw new ArgumentNullException(nameof(settings));
             settings.Validate();
+            if (settings.freePlay) throw new ArgumentException("free-play levels have no shots");
             if (targetSequence == null || targetSequence.Count == 0)
                 throw new ArgumentException("need at least one target", nameof(targetSequence));
             int half = (settings.zones - 1) / 2;
@@ -118,12 +102,18 @@ namespace Keeper244.Core
         {
             results.Clear();
             Saves = 0;
+            Score = 0;
+            Streak = 0;
+            BestStreak = 0;
             ShotIndex = 0;
             Clock = 0;
             EnterWaitRest();
         }
 
-        public void Tick(float dt, int keeperSlot5, bool atRest)
+        /// <summary>Shorthand without activations (keeps older call sites and tests simple).</summary>
+        public void Tick(float dt, int keeperSlot5, bool atRest) => Tick(dt, new InputSample(keeperSlot5, atRest));
+
+        public void Tick(float dt, InputSample input)
         {
             if (dt < 0f) throw new ArgumentOutOfRangeException(nameof(dt));
             if (State == RoundState.Idle || State == RoundState.Complete) return;
@@ -133,7 +123,7 @@ namespace Keeper244.Core
             switch (State)
             {
                 case RoundState.WaitRest:
-                    if (atRest)
+                    if (input.AtRest)
                     {
                         restTime += dt;
                     }
@@ -142,12 +132,13 @@ namespace Keeper244.Core
                         if (prevAtRest) falseActivations++;
                         restTime = 0f;
                     }
-                    prevAtRest = atRest;
-                    if (atRest && restTime >= settings.restGateSeconds)
+                    prevAtRest = input.AtRest;
+                    if (input.AtRest && restTime >= settings.restGateSeconds)
                         EnterCue();
                     break;
 
                 case RoundState.Cue:
+                    Observe(dt, input);
                     stateTime += dt;
                     if (stateTime >= settings.cueSeconds)
                     {
@@ -159,11 +150,12 @@ namespace Keeper244.Core
                     break;
 
                 case RoundState.Flight:
+                    Observe(dt, input);
                     stateTime += dt;
                     if (stateTime >= settings.flightSeconds)
                     {
                         stateTime -= settings.flightSeconds;
-                        Resolve(keeperSlot5);
+                        Resolve(input);
                     }
                     break;
 
@@ -182,6 +174,36 @@ namespace Keeper244.Core
             }
         }
 
+        /// <summary>Behaviour metrics for the current frame (brief §3.9).</summary>
+        void Observe(float dt, InputSample input)
+        {
+            int target = CurrentTarget;
+            int z = FieldGeometry.ToZoneSlot(input.Slot5, settings.zones);
+            int side = Math.Sign(z);
+
+            if (z != 0 && firstMoveSign == 0)
+            {
+                firstMoveSign = side;
+                wrongDirection = target == 0 || side != Math.Sign(target);
+            }
+            if (target != 0 && side == Math.Sign(target))
+            {
+                if (double.IsNaN(reactionTime)) reactionTime = Clock - cueTime;
+                if (Math.Abs(z) > Math.Abs(target)) overshoot = true;
+            }
+
+            if (z == target)
+            {
+                dwell += dt;
+                dwellBiceps += input.Biceps * dt;
+                dwellTriceps += input.Triceps * dt;
+            }
+            else
+            {
+                dwell = dwellBiceps = dwellTriceps = 0.0;
+            }
+        }
+
         void EnterWaitRest()
         {
             State = RoundState.WaitRest;
@@ -197,27 +219,58 @@ namespace Keeper244.Core
             State = RoundState.Cue;
             stateTime = 0f;
             cueTime = Clock;
+            reactionTime = double.NaN;
+            firstMoveSign = 0;
+            wrongDirection = false;
+            overshoot = false;
+            dwell = dwellBiceps = dwellTriceps = 0.0;
             CueStarted?.Invoke(ShotIndex, CurrentTarget);
         }
 
-        void Resolve(int keeperSlot5)
+        void Resolve(InputSample input)
         {
-            int zoneSlot = FieldGeometry.ToZoneSlot(keeperSlot5, settings.zones);
-            bool saved = zoneSlot == CurrentTarget;
-            if (saved) Saves++;
+            int target = CurrentTarget;
+            int zoneSlot = FieldGeometry.ToZoneSlot(input.Slot5, settings.zones);
+            bool saved = zoneSlot == target;
 
+            int streakBefore = Streak;
+            int points = ScoreRules.Points(saved, target, settings.zones, streakBefore);
+            if (saved)
+            {
+                Saves++;
+                Streak++;
+                BestStreak = Math.Max(BestStreak, Streak);
+            }
+            else
+            {
+                Streak = 0;
+            }
+            Score += points;
+
+            bool held = saved && dwell > 0.0;
             var result = new ShotResult
             {
                 ShotIndex = ShotIndex,
                 ShotCount = targets.Count,
-                Target = CurrentTarget,
-                KeeperSlot5 = keeperSlot5,
+                Zones = settings.zones,
+                Target = target,
+                KeeperSlot5 = input.Slot5,
                 KeeperZoneSlot = zoneSlot,
                 Saved = saved,
+                Points = points,
+                StreakBefore = streakBefore,
+                Multiplier = ScoreRules.Multiplier(streakBefore),
                 CueTime = cueTime,
                 KickTime = kickTime,
                 ArrivalTime = kickTime + settings.flightSeconds,
+                ReactionTime = reactionTime,
+                WrongDirection = wrongDirection,
+                Overshoot = overshoot,
+                Undershoot = target != 0 && Math.Sign(zoneSlot) == Math.Sign(target) && Math.Abs(zoneSlot) < Math.Abs(target),
+                TimeInTargetBeforeArrival = saved ? dwell : 0.0,
                 FalseActivations = falseActivations,
+                MeanBiceps = held ? dwellBiceps / dwell : double.NaN,
+                MeanTriceps = held ? dwellTriceps / dwell : double.NaN,
             };
             results.Add(result);
             State = RoundState.Feedback;
@@ -227,12 +280,32 @@ namespace Keeper244.Core
         void Finish()
         {
             State = RoundState.Complete;
+            int zones = settings.zones;
+            int half = (zones - 1) / 2;
+            var zoneShots = new int[zones];
+            var zoneSaves = new int[zones];
+            double rtSum = 0;
+            int rtCount = 0;
+            foreach (var r in results)
+            {
+                zoneShots[r.Target + half]++;
+                if (r.Saved) zoneSaves[r.Target + half]++;
+                if (!double.IsNaN(r.ReactionTime)) { rtSum += r.ReactionTime; rtCount++; }
+            }
+
             LevelCompleted?.Invoke(new LevelResult
             {
+                LevelId = settings.levelId,
                 LevelName = settings.levelName,
+                Zones = zones,
                 Shots = results.Count,
                 Saves = Saves,
+                Score = Score,
+                BestStreak = BestStreak,
                 UnlockSaveFraction = settings.unlockSaveFraction,
+                MeanReactionTime = rtCount > 0 ? rtSum / rtCount : double.NaN,
+                ZoneShots = zoneShots,
+                ZoneSaves = zoneSaves,
             });
         }
     }

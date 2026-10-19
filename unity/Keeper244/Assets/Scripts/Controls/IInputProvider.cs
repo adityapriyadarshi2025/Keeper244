@@ -1,3 +1,5 @@
+using Keeper244.Core;
+
 namespace Keeper244.Controls
 {
     /// <summary>
@@ -24,5 +26,8 @@ namespace Keeper244.Controls
 
         /// <summary>Short name for the HUD and logs, e.g. "Keyboard" or "EMG".</summary>
         string SourceName { get; }
+
+        /// <summary>Calibration thresholds for the HUD lines (keyboard: placeholders; EMG: from the "calib" message).</summary>
+        ChannelThresholds Thresholds { get; }
     }
 }

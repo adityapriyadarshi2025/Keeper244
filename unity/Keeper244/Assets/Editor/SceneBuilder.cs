@@ -36,12 +36,17 @@ namespace Keeper244.EditorTools
                 !EditorUtility.DisplayDialog("Keeper244", "Main.unity already exists. Rebuild it from code?\n\nAny manual edits to the scene will be lost (assets and materials are kept).", "Rebuild", "Cancel"))
                 return;
 
+            // New scene FIRST: switching scenes unloads unused assets, which would kill references to
+            // ScriptableObjects created before the switch (the level would be saved as "None").
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
             EnsureFolder("Assets", "Scenes");
             EnsureFolder("Assets", "Materials");
             EnsureFolder("Assets", "Config");
             EnsureFolder("Assets/Config", "Levels");
 
-            var l1 = LoadOrCreateLevel("L1_ThreeZones", "L1", "L1 Three Zones", 3, 1.5f, 1.2f);
+            LoadOrCreateLevel("L0_FreePlay", "L0", "L0 Free Play", 5, 1.5f, 1.2f, freePlay: true);
+            LoadOrCreateLevel("L1_ThreeZones", "L1", "L1 Three Zones", 3, 1.5f, 1.2f);
             LoadOrCreateLevel("L2_FiveZones", "L2", "L2 Five Zones", 5, 1.5f, 1.2f);
             LoadOrCreateLevel("L3_Pro", "L3", "L3 Pro", 5, 0.9f, 0.8f);
 
@@ -54,7 +59,6 @@ namespace Keeper244.EditorTools
             var ballMat = Mat("Ball", new Color(0.97f, 0.97f, 0.97f));
             var markerMat = Mat("ZoneMarker", new Color(1f, 0.85f, 0.1f), unlit: true);
 
-            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             RenderSettings.ambientMode = AmbientMode.Flat;
             RenderSettings.ambientLight = new Color(0.55f, 0.58f, 0.62f);
 
@@ -138,27 +142,44 @@ namespace Keeper244.EditorTools
             var gameGo = new GameObject("Game");
             var input = gameGo.AddComponent<KeyboardInput>();
             var gm = gameGo.AddComponent<GameManager>();
-            var overlay = gameGo.AddComponent<DebugStatusOverlay>();
+            var flow = gameGo.AddComponent<GameFlow>();
+            var hud = gameGo.AddComponent<HudOverlay>();
+            var debugPanel = gameGo.AddComponent<DebugStatusOverlay>();
+            gameGo.AddComponent<AudioSource>();
+            var sfx = gameGo.AddComponent<AudioFeedback>();
 
             var so = new SerializedObject(gm);
-            so.FindProperty("level").objectReferenceValue = l1;
-            so.FindProperty("inputSource").objectReferenceValue = input;
             so.FindProperty("keeper").objectReferenceValue = keeper;
             so.FindProperty("ball").objectReferenceValue = ball;
             so.FindProperty("striker").objectReferenceValue = striker;
             so.FindProperty("marker").objectReferenceValue = marker;
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            var soOverlay = new SerializedObject(overlay);
-            soOverlay.FindProperty("game").objectReferenceValue = gm;
-            soOverlay.ApplyModifiedPropertiesWithoutUndo();
+            // Fresh handles to the level assets (see the note at NewScene).
+            string[] levelFiles = { "L0_FreePlay", "L1_ThreeZones", "L2_FiveZones", "L3_Pro" };
+            var soFlow = new SerializedObject(flow);
+            soFlow.FindProperty("game").objectReferenceValue = gm;
+            soFlow.FindProperty("keyboard").objectReferenceValue = input;
+            var levelsProp = soFlow.FindProperty("levels");
+            levelsProp.arraySize = levelFiles.Length;
+            for (int i = 0; i < levelFiles.Length; i++)
+            {
+                var cfg = AssetDatabase.LoadAssetAtPath<LevelConfig>($"{LevelsDir}/{levelFiles[i]}.asset");
+                levelsProp.GetArrayElementAtIndex(i).objectReferenceValue = cfg;
+                if (cfg == null) Debug.LogError($"[Keeper244] SceneBuilder: level asset {levelFiles[i]} missing.");
+            }
+            soFlow.ApplyModifiedPropertiesWithoutUndo();
+
+            Wire(hud, ("game", gm), ("flow", flow));
+            Wire(debugPanel, ("game", gm));
+            Wire(sfx, ("game", gm));
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             AssetDatabase.SaveAssets();
 
             Selection.activeGameObject = gameGo;
-            Debug.Log($"[Keeper244] Built {ScenePath} (level {l1.settings.levelName}). Press Play: A/D = near, Shift = far.");
+            Debug.Log($"[Keeper244] Built {ScenePath}. Press Play, pick a level in the menu. A/D = near, Shift = far, Esc = pause.");
         }
 
         // ---------- helpers ----------
@@ -169,7 +190,15 @@ namespace Keeper244.EditorTools
                 AssetDatabase.CreateFolder(parent, name);
         }
 
-        static LevelConfig LoadOrCreateLevel(string fileName, string id, string displayName, int zones, float cue, float flight)
+        static void Wire(Object target, params (string field, Object value)[] refs)
+        {
+            var so = new SerializedObject(target);
+            foreach (var (field, value) in refs)
+                so.FindProperty(field).objectReferenceValue = value;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static LevelConfig LoadOrCreateLevel(string fileName, string id, string displayName, int zones, float cue, float flight, bool freePlay = false)
         {
             string path = $"{LevelsDir}/{fileName}.asset";
             var cfg = AssetDatabase.LoadAssetAtPath<LevelConfig>(path);
@@ -181,6 +210,7 @@ namespace Keeper244.EditorTools
                 levelId = id,
                 levelName = displayName,
                 zones = zones,
+                freePlay = freePlay,
                 cueSeconds = cue,
                 flightSeconds = flight,
                 feedbackSeconds = 1.5f,

@@ -14,6 +14,7 @@ Status as of 2026-10-19: the project is chosen and the game concept plus technic
 | 2026-10-19 | Build order changed to **game first**: phases P0–P9 in the build plan doc replace milestones M0–M7 (mapping in §9.1) |
 | 2026-10-19 | Unity version fixed to **Unity 6.3 LTS, pinned at 6000.3.26f1**; team platforms: Aditya on macOS, three teammates on Windows 11 (§5.1, §10, §11) |
 | 2026-10-19 | fs set to 2000 Hz, 16-bit, from the BioRadio spec sheet (250–16,000 Hz, 12/16/24-bit, 190 kbps); TA question on fs dropped |
+| 2026-10-19 | P2: scoring, per-shot metrics and game logs implemented as in §3.6/§3.9; exact metric definitions and file layout in `docs/GAME_LOGS.md`. HUD and menus use Unity IMGUI (code-only, no assets); a world-space HUD is needed only if VR is confirmed |
 | 2026-10-19 | P1: UDP contract frozen (`docs/PROTOCOL.md`): every Python→Unity message gets a `type`, `emg` gains `rest`, new `calib`, `level_start`, `level_end`; `level` is an id string |
 | 2026-10-19 | Unity project created at `unity/Keeper244` (Universal 3D template, Force Text, Visible Meta Files, Input System only) |
 

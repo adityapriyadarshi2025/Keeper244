@@ -7,7 +7,7 @@ namespace Keeper244.Game
     /// Glowing strip on the ground in front of the goal that telegraphs the target zone during CUE,
     /// then turns green (save) or red (goal) during FEEDBACK.
     /// </summary>
-    [RequireComponent(typeof(Renderer))]
+    [RequireComponent(typeof(MeshRenderer))]
     public sealed class ZoneMarker : MonoBehaviour
     {
         [SerializeField] Color cueColor = new Color(1f, 0.85f, 0.1f);

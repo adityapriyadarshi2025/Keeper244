@@ -18,6 +18,9 @@ namespace Keeper244.Core
         /// <summary>3 or 5.</summary>
         public int zones = 3;
 
+        /// <summary>L0 Free Play: no shots, the keeper just follows the muscles (practice, demos, calibration checks).</summary>
+        public bool freePlay = false;
+
         /// <summary>CUE: target telegraphed, player starts flexing (T_cue).</summary>
         public float cueSeconds = 1.5f;
 

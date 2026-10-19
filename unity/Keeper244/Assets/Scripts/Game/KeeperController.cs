@@ -16,7 +16,12 @@ namespace Keeper244.Game
         [Tooltip("Body lean at the far slot, degrees. Purely visual.")]
         [SerializeField] float maxLeanDegrees = 12f;
 
+        [Tooltip("Height of the little jump after a save, metres.")]
+        [SerializeField] float celebrateHeight = 0.25f;
+        [SerializeField] float celebrateSeconds = 0.35f;
+
         int zones = 3;
+        float hopT = -1f;
 
         /// <summary>Current input slot5 in {-2..+2}.</summary>
         public int CommandedSlot5 { get; private set; }
@@ -34,6 +39,9 @@ namespace Keeper244.Game
 
         public void Command(int slot5) => CommandedSlot5 = Mathf.Clamp(slot5, -2, 2);
 
+        /// <summary>Small jump after a save. Visual only.</summary>
+        public void Celebrate() => hopT = 0f;
+
         public void SnapToCommand()
         {
             var p = transform.position;
@@ -46,6 +54,14 @@ namespace Keeper244.Game
             var p = transform.position;
             float targetX = FieldGeometry.KeeperX(CommandedSlot5, zones);
             p.x = Mathf.MoveTowards(p.x, targetX, Speed * Time.deltaTime);
+            p.y = 0f;
+            if (hopT >= 0f)
+            {
+                hopT += Time.deltaTime;
+                float u = Mathf.Clamp01(hopT / Mathf.Max(0.01f, celebrateSeconds));
+                p.y = Mathf.Sin(Mathf.PI * u) * celebrateHeight;
+                if (u >= 1f) hopT = -1f;
+            }
             transform.position = p;
 
             // Lean towards the side the keeper is on (negative z-rotation tips the top towards +x).

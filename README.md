@@ -28,7 +28,7 @@ Roles to split (brief §9.2): acquisition lead · DSP/analysis lead · game lead
 |---|---|---|
 | P0 | Setup: repo, Unity 6.3 LTS project, Python env, TA questions | done (TA questions pending) |
 | P1 | Game core: scene, round loop, keyboard input, 3-zone L1 | done — playable on keyboard |
-| P2 | Game complete: L0–L3, HUD, scoring, menus, shot logging | |
+| P2 | Game complete: L0–L3, HUD, scoring, menus, shot logging | in progress |
 | P3 | Game networking: UDP in/out, NO SIGNAL, fake sender, Windows build | |
 | P4 | Python bridge on the simulator | |
 | P5 | BioRadio bring-up + first dataset | |
@@ -40,7 +40,7 @@ Roles to split (brief §9.2): acquisition lead · DSP/analysis lead · game lead
 ## Repo layout
 
 ```
-docs/          PROJECT_BRIEF.md (full design), SETUP.md, PROTOCOL.md (UDP contract), source_docs/ (course files)
+docs/          PROJECT_BRIEF.md (full design), SETUP.md, PROTOCOL.md (UDP contract), GAME_LOGS.md (shots.csv columns), source_docs/ (course files)
 protocol/      udp_examples.json: one example per UDP message, tested by Python and Unity
 python/        emg_bridge/ (DSP + decision + UDP), config.yaml, tests/, tools/, analysis/
 unity/         Keeper244/ (Unity 6.3 LTS project, created in P0)

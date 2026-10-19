@@ -1,3 +1,4 @@
+using Keeper244.Core;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -16,7 +17,9 @@ namespace Keeper244.Controls
     ///
     /// It also fakes smooth activation values (ramping like an EMG envelope) so the HUD bars have
     /// something realistic to draw before real EMG exists.
+    /// Runs before other scripts each frame, so the game reads this frame's keys (no 1-frame lag).
     /// </summary>
+    [DefaultExecutionOrder(-100)]
     public sealed class KeyboardInput : MonoBehaviour, IInputProvider
     {
         [Header("Fake activations (fraction of MVC)")]
@@ -40,6 +43,7 @@ namespace Keeper244.Controls
         public bool IsAtRest => atRest;
         public bool HasSignal => Keyboard.current != null;
         public string SourceName => "Keyboard";
+        public ChannelThresholds Thresholds => ChannelThresholds.Placeholder;
 
         void Update()
         {
