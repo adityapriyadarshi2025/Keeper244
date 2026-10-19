@@ -76,3 +76,6 @@ desktop.ini
 *.swp
 .idea/
 .vscode/
+
+# ---------- Private notes (kept locally, not on GitHub) ----------
+docs/TA_QUESTIONS.md

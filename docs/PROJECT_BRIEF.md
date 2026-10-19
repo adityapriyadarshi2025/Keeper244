@@ -13,6 +13,7 @@ Status as of 2026-10-19: the project is chosen and the game concept plus technic
 | 2026-10-19 | Project renamed **MyoKeeper → Keeper244** (user decision). Repo, Unity project and docs use the new name |
 | 2026-10-19 | Build order changed to **game first**: phases P0–P9 in the build plan doc replace milestones M0–M7 (mapping in §9.1) |
 | 2026-10-19 | Unity version fixed to **Unity 6.3 LTS, pinned at 6000.3.26f1**; team platforms: Aditya on macOS, three teammates on Windows 11 (§5.1, §10, §11) |
+| 2026-10-19 | fs set to 2000 Hz, 16-bit, from the BioRadio spec sheet (250–16,000 Hz, 12/16/24-bit, 190 kbps); TA question on fs dropped |
 | 2026-10-19 | Unity project created at `unity/Keeper244` (Universal 3D template, Force Text, Visible Meta Files, Input System only) |
 
 ---
@@ -207,7 +208,7 @@ L1 gives 2.7 s, which is comfortable. L3 gives 1.7 s, which is tight once you ad
 ### 4.1 Overview
 
 ```
- BioRadio, 2 ch sEMG (biceps, triceps), fs ≥ 1 kHz  [UNVERIFIED: device fs]
+ BioRadio, 2 ch sEMG (biceps, triceps), fs = 2 kHz  (device range 250–16,000 Hz)
         │  wireless (Bluetooth)
         ▼
  EMGSource  ──  BioRadioSource | SimulatedSource | ReplaySource
@@ -225,7 +226,7 @@ L1 gives 2.7 s, which is comfortable. L3 gives 1.7 s, which is tight once you ad
 
 | # | Stage | Default | Why | SSRP concept shown |
 |---|---|---|---|---|
-| 0 | Sampling | ≥ 1000 Hz (2000 Hz if available) | sEMG power is mostly below ~450–500 Hz, so Nyquist needs > 900 Hz | Sampling theorem, aliasing |
+| 0 | Sampling | **2000 Hz, 16-bit** | sEMG power is mostly below ~450–500 Hz, so Nyquist needs > 900 Hz; 2000 Hz gives a 2.2× margin over the 450 Hz band edge. BioRadio spec: 250–16,000 Hz, 12/16/24-bit, 190 kbps max streaming. Bandwidth check: 2 ch × 16 bit × 2000 Hz = 64 kbps (34 % of 190 kbps); 24-bit would be 96 kbps | Sampling theorem, aliasing |
 | 1 | Band-pass | Butterworth, `butter(N=4, [20, 450], btype='bandpass', output='sos')` | < 20 Hz: motion artifact, baseline drift, much of any ECG energy. > 450 Hz: little EMG, mostly noise. If the device fs is < 1000 Hz, lower the top edge to about 0.45·fs | IIR design, pass/stop bands |
 | 2 | Notch | `iirnotch(50, Q=30)`, −3 dB width ≈ 50/30 ≈ 1.7 Hz; optional 100/150 Hz | Indian mains is 50 Hz. Keep it only if the PSD shows a peak. Trade-off: it also removes real EMG at 50 Hz | Notch filter, Q factor |
 | 3 | Rectify / square | x² for RMS (or \|x\| for MAV) | The EMG is a zero-mean carrier modulated by muscle drive. Rectifying moves the drive information to low frequency | Demodulation |
@@ -478,7 +479,7 @@ data/sessions/<YYYYMMDD_HHMM>_<participant>/
 ```
 Keeper244/
   README.md
-  docs/                       PROJECT_BRIEF.md, SETUP.md, TA_QUESTIONS.md, source_docs/
+  docs/                       PROJECT_BRIEF.md, SETUP.md, source_docs/
   python/
     emg_bridge/
       sources/                base.py, simulated.py, replay.py, bioradio.py

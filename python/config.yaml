@@ -4,7 +4,7 @@
 # P6 replaces these with values justified by real data.
 
 acquisition:
-  fs_nominal_hz: 1000          # [UNVERIFIED] device fs; measure from timestamps (brief §6)
+  fs_nominal_hz: 2000          # chosen; BioRadio supports 250-16000 Hz. Verify real fs from timestamps (brief §6)
   channels: [biceps, triceps]
 
 filters:

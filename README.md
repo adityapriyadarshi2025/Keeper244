@@ -40,7 +40,7 @@ Roles to split (brief §9.2): acquisition lead · DSP/analysis lead · game lead
 ## Repo layout
 
 ```
-docs/          PROJECT_BRIEF.md (full design), SETUP.md, TA_QUESTIONS.md, source_docs/ (course files)
+docs/          PROJECT_BRIEF.md (full design), SETUP.md, source_docs/ (course files)
 python/        emg_bridge/ (DSP + decision + UDP), config.yaml, tests/, tools/, analysis/
 unity/         Keeper244/ (Unity 6.3 LTS project, created in P0)
 data/sessions/ recorded sessions (git-ignored; share via Drive)

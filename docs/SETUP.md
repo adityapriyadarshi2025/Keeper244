@@ -103,4 +103,4 @@ Without this, git falls back to a normal text merge, which is why we also keep t
 - [x] `unity/Keeper244` committed (Unity 6000.3.26f1).
 - [ ] All 4 opened it in 6000.3.26f1 without errors.
 - [ ] Roles filled in the README.
-- [ ] TA questions sent (`docs/TA_QUESTIONS.md`).
+- [ ] TA questions asked (in person).
