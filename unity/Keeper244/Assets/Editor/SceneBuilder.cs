@@ -126,8 +126,8 @@ namespace Keeper244.EditorTools
             cam.nearClipPlane = 0.1f;
             cam.farClipPlane = 600f;
             camGo.AddComponent<AudioListener>();
-            camGo.transform.position = new Vector3(0f, 3.0f, -5.0f);           // play view: behind and above the keeper
-            camGo.transform.LookAt(new Vector3(0f, 1.0f, 7.0f));
+            camGo.transform.position = new Vector3(0f, 4.0f, -5.25f);          // CameraDirector's behind-the-goal view (editor preview)
+            camGo.transform.LookAt(new Vector3(0f, 0.6f, 6.0f));
             var camData = cam.GetUniversalAdditionalCameraData();
             camData.renderPostProcessing = true;
             camData.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
@@ -276,6 +276,8 @@ namespace Keeper244.EditorTools
             soFlow.FindProperty("game").objectReferenceValue = gm;
             soFlow.FindProperty("keyboard").objectReferenceValue = input;
             soFlow.FindProperty("cameraDirector").objectReferenceValue = director;
+            // bump GameFlow.SceneVersionCurrent whenever this builder wires something new
+            soFlow.FindProperty("sceneVersion").intValue = GameFlow.SceneVersionCurrent;
             soFlow.FindProperty("displayFont").objectReferenceValue = LoadFont("BebasNeue-Regular.ttf");
             soFlow.FindProperty("bodyFont").objectReferenceValue = LoadFont("BarlowCondensed-SemiBold.ttf");
             var levelsProp = soFlow.FindProperty("levels");

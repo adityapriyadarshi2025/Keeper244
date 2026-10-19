@@ -39,7 +39,8 @@ namespace Keeper244.Look
         }
 
         [Header("Play views")]
-        [SerializeField] Pose behindGoal = new Pose(new Vector3(0f, 3f, -5f), new Vector3(0f, 1f, 7f), 55f);
+        [Tooltip("High enough that the crossbar sits below the ball and the striker on screen, not across them.")]
+        [SerializeField] Pose behindGoal = new Pose(new Vector3(0f, 4f, -5.25f), new Vector3(0f, 0.6f, 6f), 50f);
         [SerializeField] Pose front = new Pose(new Vector3(0f, 5f, 27.5f), new Vector3(0f, 0.75f, 4f), 24f);
         [Tooltip("Seconds for the swing between the two play views.")]
         [SerializeField] float swingSeconds = 1.6f;
@@ -93,6 +94,23 @@ namespace Keeper244.Look
         void Awake()
         {
             cam = GetComponent<Camera>();
+            if (hideWhenBehindGoal == null || hideWhenBehindGoal.Length == 0)
+                hideWhenBehindGoal = FindHomeGoalBackParts();
+        }
+
+        /// <summary>
+        /// Fallback for a scene built before the list was wired: find the home goal's net panels and
+        /// back bars by their SceneBuilder names (Net_*, Back*).
+        /// </summary>
+        static Renderer[] FindHomeGoalBackParts()
+        {
+            var goal = GameObject.Find("HomeGoal");
+            if (goal == null) return Array.Empty<Renderer>();
+            var parts = new System.Collections.Generic.List<Renderer>();
+            foreach (var r in goal.GetComponentsInChildren<Renderer>(true))
+                if (r.name.StartsWith("Net_", StringComparison.Ordinal) || r.name.StartsWith("Back", StringComparison.Ordinal))
+                    parts.Add(r);
+            return parts.ToArray();
         }
 
         /// <summary>true = menu orbit, false = play view.</summary>

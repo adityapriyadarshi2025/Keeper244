@@ -195,7 +195,7 @@ L1 gives 2.7 s, which is comfortable. L3 gives 1.7 s, which is tight once you ad
 ### 3.8 Presentation: desktop vs VR
 
 - **Desktop mode is required** for development and as a fallback. It has two fixed play cameras, switched with **C** (or in the menu / pause screen):
-  - **Behind the goal** (default): low behind the keeper, looking out at the striker. The home net is hidden in this view so it doesn't block the shot.
+  - **Behind the goal** (default): behind and above the keeper, looking out at the striker, high enough that the crossbar sits below the striker and the ball on screen. The home net and its back bars are hidden in this view so they don't block the shot.
   - **Front**: TV view from behind the striker, looking at the keeper and the goal. The keeper faces the player, so his right (biceps) is on the left of the screen; the HUD and keyboard flip to match the screen, the EMG mapping does not. `shots.csv` records the view per shot.
 - **VR mode** applies only if the lab provides a headset **[OPEN]**. It uses OpenXR + the XR Interaction Toolkit.
 - **Never move the VR camera with the keeper.** Sudden sideways camera motion the user didn't make causes motion sickness. Keep the VR camera fixed: either a third-person "coach view" behind the keeper, or first-person where only the keeper's gloves and avatar move across the goal.
