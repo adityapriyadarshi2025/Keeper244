@@ -1,0 +1,66 @@
+# ============================================================
+# Keeper244 .gitattributes
+# Mac + Windows team: normalise line endings in the repo, check out native.
+# ============================================================
+* text=auto
+
+# Source / text: always LF in the repo
+*.cs        text diff=csharp
+*.py        text diff=python
+*.md        text
+*.json      text
+*.yaml      text
+*.yml       text
+*.csv       text
+*.txt       text
+*.shader    text
+*.hlsl      text
+*.cginc     text
+*.uss       text
+*.uxml      text
+*.asmdef    text
+
+# Windows scripts keep CRLF, shell scripts keep LF
+*.bat       text eol=crlf
+*.ps1       text eol=crlf
+*.sh        text eol=lf
+
+# Unity YAML (Force Text serialization). Merge with Unity's Smart Merge (see CONTRIBUTING.md).
+*.unity      text merge=unityyamlmerge eol=lf linguist-generated
+*.prefab     text merge=unityyamlmerge eol=lf linguist-generated
+*.asset      text merge=unityyamlmerge eol=lf linguist-generated
+*.mat        text merge=unityyamlmerge eol=lf linguist-generated
+*.anim       text merge=unityyamlmerge eol=lf linguist-generated
+*.controller text merge=unityyamlmerge eol=lf linguist-generated
+*.physicMaterial text merge=unityyamlmerge eol=lf linguist-generated
+*.meta       text merge=unityyamlmerge eol=lf linguist-generated
+
+# Notebooks: treat as text but don't count toward language stats
+*.ipynb     text linguist-documentation
+
+# Small binaries kept as normal git (docs, figures). Listed BEFORE the LFS rules
+# so the unity/** LFS rules below override them for game art.
+*.png   binary
+*.jpg   binary
+*.pdf   binary
+*.xlsx  binary
+*.docx  binary
+*.pptx  binary
+
+# ---------- Binary assets via Git LFS (game art + audio only) ----------
+*.fbx   filter=lfs diff=lfs merge=lfs -text
+*.blend filter=lfs diff=lfs merge=lfs -text
+*.psd   filter=lfs diff=lfs merge=lfs -text
+*.tga   filter=lfs diff=lfs merge=lfs -text
+*.tif   filter=lfs diff=lfs merge=lfs -text
+*.exr   filter=lfs diff=lfs merge=lfs -text
+*.hdr   filter=lfs diff=lfs merge=lfs -text
+*.wav   filter=lfs diff=lfs merge=lfs -text
+*.mp3   filter=lfs diff=lfs merge=lfs -text
+*.ogg   filter=lfs diff=lfs merge=lfs -text
+*.mp4   filter=lfs diff=lfs merge=lfs -text
+*.mov   filter=lfs diff=lfs merge=lfs -text
+*.ttf   filter=lfs diff=lfs merge=lfs -text
+*.otf   filter=lfs diff=lfs merge=lfs -text
+unity/**/*.png filter=lfs diff=lfs merge=lfs -text
+unity/**/*.jpg filter=lfs diff=lfs merge=lfs -text

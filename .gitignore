@@ -1,0 +1,78 @@
+# ============================================================
+# Keeper244 .gitignore
+# Unity project lives at unity/Keeper244/, Python at python/.
+# ============================================================
+
+# ---------- Unity (generated; never commit) ----------
+unity/**/[Ll]ibrary/
+unity/**/[Tt]emp/
+unity/**/[Oo]bj/
+unity/**/[Bb]uild/
+unity/**/[Bb]uilds/
+unity/**/[Ll]ogs/
+unity/**/[Uu]ser[Ss]ettings/
+unity/**/[Mm]emoryCaptures/
+unity/**/[Rr]ecordings/
+unity/**/Assets/Plugins/Editor/JetBrains*
+unity/**/Assets/[Ss]treamingAssets/aa/*
+
+# IDE / solution files Unity regenerates
+unity/**/.vs/
+unity/**/.vscode/
+unity/**/.idea/
+unity/**/.consulo/
+unity/**/*.csproj
+unity/**/*.unityproj
+unity/**/*.sln
+unity/**/*.slnx
+unity/**/*.suo
+unity/**/*.tmp
+unity/**/*.user
+unity/**/*.userprefs
+unity/**/*.pidb
+unity/**/*.booproj
+unity/**/*.svd
+unity/**/*.pdb
+unity/**/*.mdb
+unity/**/*.opendb
+unity/**/*.VC.db
+unity/**/*.pidb.meta
+unity/**/*.pdb.meta
+unity/**/*.mdb.meta
+unity/**/sysinfo.txt
+unity/**/crashlytics-build.properties
+unity/**/*.apk
+unity/**/*.aab
+unity/**/*.unitypackage
+unity/**/*.app
+
+# Burst / Gradle / Addressables caches
+unity/**/*_BurstDebugInformation_DoNotShip/
+unity/**/.gradle/
+unity/**/ServerData/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.ipynb_checkpoints/
+build/
+dist/
+
+# ---------- Recorded data (big, personal; share via Drive, not git) ----------
+data/sessions/*
+!data/sessions/.gitkeep
+
+# ---------- OS / editor junk ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.idea/
+.vscode/

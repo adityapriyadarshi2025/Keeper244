@@ -1,0 +1,54 @@
+# Keeper244 bridge configuration.
+# Every value here is a [PROPOSED] default from docs/PROJECT_BRIEF.md §4 / §5.3.
+# Tune freely, but keep tunables HERE, never hard-coded in Python.
+# P6 replaces these with values justified by real data.
+
+acquisition:
+  fs_nominal_hz: 1000          # [UNVERIFIED] device fs; measure from timestamps (brief §6)
+  channels: [biceps, triceps]
+
+filters:
+  bandpass:
+    order: 4
+    low_hz: 20
+    high_hz: 450               # lower to ~0.45*fs if device fs < 1000 Hz
+  notch:
+    enabled: true              # keep only if the PSD shows a mains peak (E1)
+    freqs_hz: [50]             # optionally add 100, 150
+    q: 30
+
+envelope:
+  method: rms                  # rms | lowpass
+  rms_window_ms: 100
+  hop_ms: 10                   # output rate = 1000 / hop_ms = 100 Hz
+  lowpass_fc_hz: 5             # used only if method == lowpass (2nd-order Butterworth)
+
+calibration:
+  settle_s: 300
+  rest_s: 10
+  mvc_trials: 3
+  mvc_trial_s: 5
+  mvc_rest_s: 60
+  mvc_smoothing_ms: 500        # e_MVC = highest 500 ms moving average of the envelope
+  comfort_trials: 3
+  comfort_trial_s: 3
+  activation_clip: [0.0, 1.5]
+  theta_on_min: 0.10
+  theta_on_noise_k: 4          # theta_on = max(theta_on_min, k * sigma_n)
+  theta_off_ratio: 0.7
+  far_hysteresis_h: 0.05
+  check_light_margin: 0.05     # a_light >= theta_on + margin
+  check_light_strong_gap: 0.15 # a_strong - a_light >= gap
+
+decision:
+  dominance_k: 1.5
+  dwell_s: 0.080
+
+network:
+  host: 127.0.0.1
+  out_port: 5005               # Python -> Unity, packets at envelope rate
+  in_port: 5006                # Unity -> Python, events
+  signal_timeout_s: 0.250      # Unity shows NO SIGNAL after this gap
+
+recording:
+  root: ../data/sessions

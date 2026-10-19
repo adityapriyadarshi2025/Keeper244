@@ -1,0 +1,19 @@
+# Keeper244 Python bridge + analysis. Python 3.11 or 3.12.
+# Lower bounds only; tested on Windows, macOS and Linux in CI.
+
+# Core DSP / config
+numpy>=1.26
+scipy>=1.11
+pyyaml>=6.0
+
+# Analysis notebooks
+pandas>=2.1
+matplotlib>=3.8
+jupyterlab>=4.0
+
+# Live monitor (pyqtgraph needs a Qt binding)
+pyqtgraph>=0.13.7
+PySide6>=6.6
+
+# Tests
+pytest>=8.0
