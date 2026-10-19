@@ -27,7 +27,7 @@ Roles to split (brief §9.2): acquisition lead · DSP/analysis lead · game lead
 | Phase | What | Status |
 |---|---|---|
 | P0 | Setup: repo, Unity 6.3 LTS project, Python env, TA questions | done (TA questions pending) |
-| P1 | Game core: scene, round loop, keyboard input, 3-zone L1 | in progress |
+| P1 | Game core: scene, round loop, keyboard input, 3-zone L1 | done — playable on keyboard |
 | P2 | Game complete: L0–L3, HUD, scoring, menus, shot logging | |
 | P3 | Game networking: UDP in/out, NO SIGNAL, fake sender, Windows build | |
 | P4 | Python bridge on the simulator | |

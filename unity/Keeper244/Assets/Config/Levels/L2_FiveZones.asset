@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f209ee4cf5bb49359a8a059c0883067c, type: 3}
+  m_Name: L2_FiveZones
+  m_EditorClassIdentifier: Keeper244.Runtime::Keeper244.Game.LevelConfig
+  settings:
+    levelId: L2
+    levelName: L2 Five Zones
+    zones: 5
+    cueSeconds: 1.5
+    flightSeconds: 1.2
+    feedbackSeconds: 1.5
+    restGateSeconds: 0.5
+    shotsPerTarget: 3
+    unlockSaveFraction: 0.7
+    randomSeed: 0
