@@ -11,16 +11,7 @@ BioRadio (2 ch sEMG) ─► Python bridge: band-pass → notch → RMS envelope 
                                                                                       ◄── game events ──┘
 ```
 
-## Team
 
-| Name | Roll no. | Role (fill in) |
-|---|---|---|
-| Aditya Priyadarshi | 25110013 | |
-| Toshika Kumawat | 25110326 | |
-| Pratham Gupta | 25110246 | |
-| Niv Mehta | 25110199 | |
-
-Roles to split (brief §9.2): acquisition lead · DSP/analysis lead · game lead · integration + presentation lead.
 
 ## Status
 
