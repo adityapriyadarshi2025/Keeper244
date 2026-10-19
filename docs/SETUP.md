@@ -4,7 +4,7 @@ Everyone does **A–C**. Only Aditya does **D** (creating the Unity project, onc
 
 ## A. Install
 
-| Tool | macOS (Aditya) | Windows 11 (Toshika, Pratham, Niv) |
+| Tool | macOS | Windows 11 |
 |---|---|---|
 | Git + Git LFS | `brew install git git-lfs` then `git lfs install` | [Git for Windows](https://git-scm.com/download/win) (LFS included) then `git lfs install` |
 | Python | 3.11 or 3.12 (`brew install python@3.12`) | 3.11 or 3.12 from [python.org](https://www.python.org/downloads/windows/) — tick **Add to PATH** |
