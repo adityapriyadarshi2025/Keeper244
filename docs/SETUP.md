@@ -97,10 +97,3 @@ git config --global merge.unityyamlmerge.driver "'C:/Program Files/Unity/Hub/Edi
 
 Without this, git falls back to a normal text merge, which is why we also keep the one-scene-owner rule (CONTRIBUTING.md).
 
-## Phase 0 done when
-
-- [ ] All 4 members cloned the repo and ran `pytest` green.
-- [x] `unity/Keeper244` committed (Unity 6000.3.26f1).
-- [ ] All 4 opened it in 6000.3.26f1 without errors.
-- [ ] Roles filled in the README.
-- [ ] TA questions asked (in person).
