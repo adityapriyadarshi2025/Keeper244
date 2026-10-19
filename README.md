@@ -58,7 +58,7 @@ pip install -r requirements.txt
 pytest
 ```
 
-Unity: open `unity/Keeper244` in Unity Hub with **Unity 6.3 LTS** (exact patch in `ProjectSettings/ProjectVersion.txt`).
+Unity: open `unity/Keeper244` in Unity Hub with **Unity 6000.3.26f1** (6.3 LTS). Install exactly this patch.
 
 ## Key rules
 

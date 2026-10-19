@@ -4,7 +4,7 @@
 
 Official title: *Real-Time EMG Signal Processing for Biceps and Triceps Muscle-Controlled VR Football Goalkeeping Using Unity*
 
-Status as of 2026-10-19: the project is chosen and the game concept plus technical design are drafted (this file). Phase 0 (setup) is in progress; the repo is `Keeper244`. The BioRadio hardware details are still unconfirmed (see §11).
+Status as of 2026-10-19: the project is chosen and the game concept plus technical design are drafted (this file). Phase 0 (setup) is nearly done: repo `Keeper244` on GitHub, Python env + CI, Unity project created; remaining: teammates' setup, roles, TA questions. The BioRadio hardware details are still unconfirmed (see §11).
 
 **Changelog**
 
@@ -12,7 +12,8 @@ Status as of 2026-10-19: the project is chosen and the game concept plus technic
 |---|---|
 | 2026-10-19 | Project renamed **MyoKeeper → Keeper244** (user decision). Repo, Unity project and docs use the new name |
 | 2026-10-19 | Build order changed to **game first**: phases P0–P9 in the build plan doc replace milestones M0–M7 (mapping in §9.1) |
-| 2026-10-19 | Unity version fixed to **Unity 6.3 LTS (6000.3.x)**; team platforms: Aditya on macOS, three teammates on Windows 11 (§5.1, §10, §11) |
+| 2026-10-19 | Unity version fixed to **Unity 6.3 LTS, pinned at 6000.3.26f1**; team platforms: Aditya on macOS, three teammates on Windows 11 (§5.1, §10, §11) |
+| 2026-10-19 | Unity project created at `unity/Keeper244` (Universal 3D template, Force Text, Visible Meta Files, Input System only) |
 
 ---
 
@@ -408,7 +409,7 @@ The biggest levers are the envelope window and the dwell time. E3 measures the t
 |---|---|---|
 | Processing bridge | Python 3.11+, numpy, scipy, pyyaml; pyqtgraph for the live monitor **[PROPOSED]** | All DSP, calibration, decisions and logging |
 | Analysis | Jupyter, numpy, scipy, pandas, matplotlib **[PROPOSED]** | Offline notebooks (§7) |
-| Game | **Unity 6.3 LTS (6000.3.x), Universal 3D (URP) template, C# [DECIDED]** | 6.0 LTS support ends Oct 2026; 6.3 LTS is supported to Dec 2027. The first project commit pins the exact patch in `ProjectSettings/ProjectVersion.txt`; everyone installs that exact patch. Lab PCs only need the built `.exe`, not Unity. `UdpClient` on a background thread; `JsonUtility` for parsing |
+| Game | **Unity 6.3 LTS, pinned at 6000.3.26f1, Universal 3D (URP) template, C#, Input System package [DECIDED]** | 6.0 LTS support ends Oct 2026; 6.3 LTS is supported to Dec 2027. The patch is pinned in `ProjectSettings/ProjectVersion.txt`; everyone installs exactly that patch. Lab PCs only need the built `.exe`, not Unity. `UdpClient` on a background thread; `JsonUtility` for parsing |
 | VR (if a headset exists) | OpenXR plugin + XR Interaction Toolkit | Fixed camera (§3.8) |
 | Device access | **[UNVERIFIED]** Vendor pages mention LabVIEW and MATLAB drivers and an "open architecture". The course guide says "BioRadio software/SDK". The real route (vendor API? BioCapture streaming? LSL? MATLAB driver → UDP?) must be confirmed with the TA (§11) | Hidden behind `EMGSource`, so the rest of the system never depends on it |
 
