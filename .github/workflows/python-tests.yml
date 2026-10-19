@@ -2,9 +2,9 @@ name: python-tests
 
 on:
   push:
-    paths: ["python/**", ".github/workflows/python-tests.yml"]
+    paths: ["python/**", "protocol/**", ".github/workflows/python-tests.yml"]
   pull_request:
-    paths: ["python/**", ".github/workflows/python-tests.yml"]
+    paths: ["python/**", "protocol/**", ".github/workflows/python-tests.yml"]
 
 jobs:
   test:

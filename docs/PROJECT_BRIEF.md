@@ -14,6 +14,7 @@ Status as of 2026-10-19: the project is chosen and the game concept plus technic
 | 2026-10-19 | Build order changed to **game first**: phases P0–P9 in the build plan doc replace milestones M0–M7 (mapping in §9.1) |
 | 2026-10-19 | Unity version fixed to **Unity 6.3 LTS, pinned at 6000.3.26f1**; team platforms: Aditya on macOS, three teammates on Windows 11 (§5.1, §10, §11) |
 | 2026-10-19 | fs set to 2000 Hz, 16-bit, from the BioRadio spec sheet (250–16,000 Hz, 12/16/24-bit, 190 kbps); TA question on fs dropped |
+| 2026-10-19 | P1: UDP contract frozen (`docs/PROTOCOL.md`): every Python→Unity message gets a `type`, `emg` gains `rest`, new `calib`, `level_start`, `level_end`; `level` is an id string |
 | 2026-10-19 | Unity project created at `unity/Keeper244` (Universal 3D template, Force Text, Visible Meta Files, Input System only) |
 
 ---
@@ -440,22 +441,27 @@ Implementations:
 2. **`ReplaySource`.** Streams a recorded `raw.csv` at real-time pace, for regression tests and offline tuning on real data.
 3. **`BioRadioSource`.** Real device. Implementation TBD once the access route is known.
 
-### 5.3 Network protocol (localhost UDP, JSON) **[PROPOSED]**
+### 5.3 Network protocol (localhost UDP, JSON) **[DECIDED — frozen in P1]**
 
-**Python → Unity:** port 5005, 100 Hz.
+The full contract is in **`docs/PROTOCOL.md`**; one example of every message is in **`protocol/udp_examples.json`**, which both the Python tests and the Unity EditMode tests check. Summary:
+
+**Python → Unity:** port 5005. `emg` at 100 Hz, plus `calib` after calibration and every 1 s.
 
 ```json
-{"seq": 10234, "t": 512.340, "ab": 0.286, "at": 0.041, "slot": 1, "status": "ok"}
+{"type": "emg", "seq": 10234, "t": 512.34, "ab": 0.286, "at": 0.041, "slot": 1, "rest": false, "status": "ok"}
+{"type": "calib", "th_on": [0.10, 0.12], "th_off": [0.07, 0.084], "th_far": [0.35, 0.33]}
 ```
 
-Unity derives the 3-zone slot as `sign(slot)`.
+Unity derives the 3-zone slot as `sign(slot)`. `rest` = both channels below θ_off (drives the rest gate). `calib` arrays are `[biceps, triceps]` (HUD threshold lines).
 
 **Unity → Python:** port 5006, event-driven. Python timestamps every event on arrival, so the raw signal and the game events share **one clock**.
 
 ```json
-{"type": "event", "name": "shot_cue",     "shot": 3, "level": 2, "target": -2}
+{"type": "event", "name": "level_start",  "level": "L1", "zones": 3, "shots": 9}
+{"type": "event", "name": "shot_cue",     "shot": 3, "level": "L2", "zones": 5, "target": -2}
 {"type": "event", "name": "kick",         "shot": 3}
-{"type": "event", "name": "arrival",      "shot": 3, "keeper_slot": -2, "saved": true}
+{"type": "event", "name": "arrival",      "shot": 3, "target": -2, "keeper_slot": -2, "saved": true}
+{"type": "event", "name": "level_end",    "level": "L1", "shots": 9, "saves": 7}
 {"type": "event", "name": "slot_applied", "seq": 10234}
 {"type": "cmd",   "name": "mark",         "label": "artifact_trial_cable_tug"}
 ```
@@ -479,7 +485,8 @@ data/sessions/<YYYYMMDD_HHMM>_<participant>/
 ```
 Keeper244/
   README.md
-  docs/                       PROJECT_BRIEF.md, SETUP.md, source_docs/
+  docs/                       PROJECT_BRIEF.md, SETUP.md, PROTOCOL.md, source_docs/
+  protocol/                   udp_examples.json (shared by Python and Unity tests)
   python/
     emg_bridge/
       sources/                base.py, simulated.py, replay.py, bioradio.py
