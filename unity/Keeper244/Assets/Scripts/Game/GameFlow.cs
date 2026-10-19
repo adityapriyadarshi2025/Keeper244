@@ -12,7 +12,8 @@ namespace Keeper244.Game
     /// stars), a short intro card before each level, pause, results, unlock progression
     /// (pass a level at ≥ its unlock fraction to open the next) and logging.
     ///
-    /// Keys while playing: Esc = pause, R = restart level, F1 = debug panel.
+    /// Keys while playing: Esc = pause, R = restart level, C = switch camera, F1 = debug panel.
+    /// The camera choice (behind the goal / front) is remembered between runs.
     /// </summary>
     public sealed class GameFlow : MonoBehaviour
     {
@@ -34,6 +35,7 @@ namespace Keeper244.Game
         const string PrefParticipant = "k244.participant";
         const string PrefUnlockedPrefix = "k244.unlocked.";
         const string PrefBestPrefix = "k244.best.";
+        const string PrefCamera = "k244.camera";
 
         ScreenId screen = ScreenId.Menu;
         string participant = "P01";
@@ -52,6 +54,11 @@ namespace Keeper244.Game
         public LevelConfig CurrentLevel => currentIndex >= 0 && currentIndex < levels.Length ? levels[currentIndex] : null;
         public string LogFolder => log?.Folder;
 
+        /// <summary>Front camera: the keeper faces the player, so screen left = keeper's right.</summary>
+        public bool Mirrored => cameraDirector != null && cameraDirector.Mirrored;
+
+        CameraDirector.View CameraView => cameraDirector != null ? cameraDirector.Current : CameraDirector.View.BehindGoal;
+
         IInputProvider Input => keyboard; // P3 adds EMG over UDP
 
         void Awake()
@@ -64,6 +71,7 @@ namespace Keeper244.Game
 
         void OnEnable()
         {
+            if (cameraDirector != null) cameraDirector.ViewChanged += OnViewChanged;
             if (game == null) return;
             game.ShotResolved += OnShotResolved;
             game.LevelCompleted += OnLevelCompleted;
@@ -71,6 +79,7 @@ namespace Keeper244.Game
 
         void OnDisable()
         {
+            if (cameraDirector != null) cameraDirector.ViewChanged -= OnViewChanged;
             if (game == null) return;
             game.ShotResolved -= OnShotResolved;
             game.LevelCompleted -= OnLevelCompleted;
@@ -79,7 +88,34 @@ namespace Keeper244.Game
         void Start()
         {
             game.SetInput(Input);
+            if (cameraDirector != null)
+            {
+                var saved = PlayerPrefs.GetInt(PrefCamera, 0) == 1 ? CameraDirector.View.Front : CameraDirector.View.BehindGoal;
+                cameraDirector.SetView(saved, instant: true);
+            }
+            ApplyMirror();
             ShowMenu();
+        }
+
+        void OnViewChanged(CameraDirector.View view)
+        {
+            PlayerPrefs.SetInt(PrefCamera, view == CameraDirector.View.Front ? 1 : 0);
+            ApplyMirror();
+        }
+
+        void ApplyMirror()
+        {
+            if (keyboard != null) keyboard.MirrorLeftRight = Mirrored;
+        }
+
+        public void SetCamera(CameraDirector.View view)
+        {
+            if (cameraDirector != null) cameraDirector.SetView(view);
+        }
+
+        public void ToggleCamera()
+        {
+            if (cameraDirector != null) cameraDirector.ToggleView();
         }
 
         void OnDestroy()
@@ -101,6 +137,8 @@ namespace Keeper244.Game
                 else if (screen == ScreenId.Paused) Resume();
             }
             if (screen == ScreenId.Playing && kb.rKey.wasPressedThisFrame) StartLevel(currentIndex);
+            // not on the menu: the participant ID field may be taking typed letters
+            if (screen != ScreenId.Menu && kb.cKey.wasPressedThisFrame) ToggleCamera();
         }
 
         // ---------------- actions ----------------
@@ -173,7 +211,7 @@ namespace Keeper244.Game
         void OnShotResolved(ShotResult r)
         {
             var level = CurrentLevel;
-            log?.WriteShot(r, participant, Input.SourceName, level != null ? level.settings.levelId : "");
+            log?.WriteShot(r, participant, Input.SourceName, level != null ? level.settings.levelId : "", CameraDirector.Name(CameraView));
         }
 
         void OnLevelCompleted(LevelResult r)
@@ -218,7 +256,7 @@ namespace Keeper244.Game
                 "Flex your biceps to dive right, your triceps to dive left, stay relaxed to hold the centre. " +
                 "Flex harder to reach the far post.", 24, Ui.Text);
             Ui.Label(lx + 8, Ui.RefHeight - 90, 900, 30, "ES244 SENSOR SYSTEMS · SSRP PROJECT 15 · TEAM 20 · IIT GANDHINAGAR", 22, Ui.Muted, display: true);
-            Ui.Label(lx + 8, Ui.RefHeight - 60, 900, 30, "ESC PAUSE · R RESTART · F1 DEBUG · A/D NEAR · SHIFT FAR", 20, Ui.Muted, display: true);
+            Ui.Label(lx + 8, Ui.RefHeight - 60, 900, 30, "ESC PAUSE · R RESTART · C CAMERA · F1 DEBUG · A/D NEAR · SHIFT FAR", 20, Ui.Muted, display: true);
 
             // ---- panel, right ----
             float w = 640f, h = 860f;
@@ -243,9 +281,19 @@ namespace Keeper244.Game
             GUI.enabled = true;
             GUILayout.EndHorizontal();
 
-            GUILayout.Space(Ui.S(16));
+            GUILayout.Space(Ui.S(14));
+            GUILayout.Label("CAMERA  (C IN GAME)", Ui.LabelStyle(22, Ui.Muted, TextAnchor.UpperLeft, display: true));
+            GUILayout.BeginHorizontal();
+            var view = CameraView;
+            bool behind = GUILayout.Toggle(view == CameraDirector.View.BehindGoal, "  Behind the goal", Ui.ToggleStyle(24));
+            bool front = GUILayout.Toggle(view == CameraDirector.View.Front, "  Front (TV view)", Ui.ToggleStyle(24));
+            GUILayout.EndHorizontal();
+            if (behind && view != CameraDirector.View.BehindGoal) SetCamera(CameraDirector.View.BehindGoal);
+            else if (front && view != CameraDirector.View.Front) SetCamera(CameraDirector.View.Front);
+
+            GUILayout.Space(Ui.S(14));
             GUILayout.Label("CHOOSE A LEVEL", Ui.LabelStyle(22, Ui.Muted, TextAnchor.UpperLeft, display: true));
-            menuScroll = GUILayout.BeginScrollView(menuScroll, GUIStyle.none, GUIStyle.none, GUILayout.Height(Ui.S(440)));
+            menuScroll = GUILayout.BeginScrollView(menuScroll, GUIStyle.none, GUIStyle.none, GUILayout.Height(Ui.S(416)));
             for (int i = 0; i < levels.Length; i++)
             {
                 var lv = levels[i];
@@ -298,7 +346,7 @@ namespace Keeper244.Game
 
         void DrawPause()
         {
-            float w = 520f, h = 420f;
+            float w = 560f, h = 500f;
             float x = (Ui.Width - w) / 2f, y = (Ui.RefHeight - h) / 2f;
             Ui.Fill(0, 0, Ui.Width, Ui.RefHeight, new Color(0f, 0f, 0f, 0.5f));
             Ui.RoundBox(x, y, w, h, Ui.Panel);
@@ -308,6 +356,9 @@ namespace Keeper244.Game
             if (GUILayout.Button("RESUME  (ESC)", Ui.ButtonStyle(30, primary: true))) Resume();
             GUILayout.Space(Ui.S(12));
             if (GUILayout.Button("RESTART LEVEL  (R)", Ui.ButtonStyle(30))) StartLevel(currentIndex);
+            GUILayout.Space(Ui.S(12));
+            string cameraLabel = Mirrored ? "CAMERA: FRONT  (C)" : "CAMERA: BEHIND GOAL  (C)";
+            if (GUILayout.Button(cameraLabel, Ui.ButtonStyle(30))) ToggleCamera();
             GUILayout.Space(Ui.S(12));
             if (GUILayout.Button("MAIN MENU", Ui.ButtonStyle(30))) ShowMenu();
             GUILayout.EndArea();
@@ -348,17 +399,19 @@ namespace Keeper244.Game
             Tile(x + 325, y + 340, 250, "BEST STREAK", r.BestStreak.ToString(), null);
             Tile(x + 590, y + 340, 250, "MEAN REACTION", rt, null);
 
-            // per-zone saves
+            // per-zone saves, in screen order (the front camera shows the keeper's right on the left)
             Ui.Label(x + 60, y + 480, w - 120, 30, "SAVES PER TARGET ZONE", 22, Ui.Muted, display: true);
             string[] names = r.Zones == 3 ? new[] { "LEFT", "CENTRE", "RIGHT" } : new[] { "L2", "L1", "C", "R1", "R2" };
             float cellW = (w - 120) / r.Zones;
+            bool mirrored = Mirrored;
             for (int i = 0; i < r.Zones && i < r.ZoneShots.Length; i++)
             {
+                int z = mirrored ? r.Zones - 1 - i : i; // ZoneShots is indexed by keeper-relative slot
                 float cx = x + 60 + i * cellW;
-                float frac = r.ZoneShots[i] == 0 ? 0f : (float)r.ZoneSaves[i] / r.ZoneShots[i];
+                float frac = r.ZoneShots[z] == 0 ? 0f : (float)r.ZoneSaves[z] / r.ZoneShots[z];
                 Ui.RoundBox(cx + 4, y + 514, cellW - 8, 92, Ui.PanelLight);
                 if (frac > 0.05f) Ui.RoundBox(cx + 4, y + 514 + 92 * (1f - frac), cellW - 8, 92 * frac, new Color(Ui.Good.r, Ui.Good.g, Ui.Good.b, 0.5f));
-                Ui.Label(cx, y + 522, cellW, 44, $"{r.ZoneSaves[i]}/{r.ZoneShots[i]}", 40, Ui.Text, TextAnchor.UpperCenter, display: true);
+                Ui.Label(cx, y + 522, cellW, 44, $"{r.ZoneSaves[z]}/{r.ZoneShots[z]}", 40, Ui.Text, TextAnchor.UpperCenter, display: true);
                 Ui.Label(cx, y + 566, cellW, 30, names[i], 22, Ui.Muted, TextAnchor.UpperCenter, display: true);
             }
 

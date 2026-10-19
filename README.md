@@ -28,7 +28,7 @@ Roles to split (brief §9.2): acquisition lead · DSP/analysis lead · game lead
 |---|---|---|
 | P0 | Setup: repo, Unity 6.3 LTS project, Python env, TA questions | done (TA questions pending) |
 | P1 | Game core: scene, round loop, keyboard input, 3-zone L1 | done — playable on keyboard |
-| P2 | Game complete: L0–L3, HUD, scoring, menus, shot logging | in progress |
+| P2 | Game complete: L0–L3, HUD, scoring, menus, shot logging | done — plus look pass and two cameras (C to switch) |
 | P3 | Game networking: UDP in/out, NO SIGNAL, fake sender, Windows build | |
 | P4 | Python bridge on the simulator | |
 | P5 | BioRadio bring-up + first dataset | |

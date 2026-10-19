@@ -8,6 +8,7 @@ namespace Keeper244.Core
     /// shots.csv format: one row per shot with every §3.9 field. Numbers use the invariant culture
     /// (decimal point, never comma), times in seconds with 3 decimals, booleans as 0/1, and
     /// "not applicable" (NaN) as an empty cell, so pandas reads it as NaN.
+    /// New columns go at the END so older analysis scripts that index by position keep working.
     /// </summary>
     public static class ShotCsv
     {
@@ -18,11 +19,13 @@ namespace Keeper244.Core
             "cue_time", "kick_time", "arrival_time", "reaction_time",
             "wrong_direction", "overshoot", "undershoot", "time_in_target_before_arrival",
             "false_activations_in_wait_rest", "mean_a_b", "mean_a_t",
+            "camera",
         };
 
         public static string Header => string.Join(",", Columns);
 
-        public static string Row(ShotResult r, string participant, string input, string levelId)
+        /// <param name="camera">Play view when the ball arrived: "behind" or "front" (empty if unknown).</param>
+        public static string Row(ShotResult r, string participant, string input, string levelId, string camera = "")
         {
             var c = CultureInfo.InvariantCulture;
             var sb = new StringBuilder(256);
@@ -51,6 +54,7 @@ namespace Keeper244.Core
             Add(r.FalseActivations.ToString(c));
             Add(Num(r.MeanBiceps, "0.0000"));
             Add(Num(r.MeanTriceps, "0.0000"));
+            Add(Escape(camera));
             return sb.ToString();
         }
 

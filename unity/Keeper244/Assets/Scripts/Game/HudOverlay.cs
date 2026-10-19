@@ -10,6 +10,10 @@ namespace Keeper244.Game
     ///  - centre: big call-outs (RELAX, SHOT INCOMING, SAVE!, GOAL) and the points popup
     ///  - bottom-left: activation bars, triceps left and biceps right, with θ_on and θ_far lines
     ///  - bottom-centre: slot strip (keeper filled, target outlined during CUE/FLIGHT)
+    ///
+    /// Everything left/right is drawn as it appears on SCREEN. In the front camera the keeper faces
+    /// the player, so his right (biceps, positive slots) is on the left: the strip, the bars and the
+    /// LEFT/RIGHT call-outs flip with it (GameFlow.Mirrored).
     /// </summary>
     public sealed class HudOverlay : MonoBehaviour
     {
@@ -22,6 +26,8 @@ namespace Keeper244.Game
         ShotResult popup;
         float popupStart = -10f;
         float shownBiceps, shownTriceps;
+
+        bool Mirrored => flow != null && flow.Mirrored;
 
         void OnEnable()
         {
@@ -97,6 +103,14 @@ namespace Keeper244.Game
             Ui.RoundBox(x, y, w, h, Ui.PanelSoft);
             Ui.RoundBox(x + 14, y + 16, 16, 16, ok ? Ui.Good : Ui.Bad);
             Ui.Label(x + 42, y + 10, w - 50, 30, ok ? $"{c.SourceName.ToUpperInvariant()} · SIGNAL OK" : "NO SIGNAL", 22, ok ? Ui.Text : Ui.Bad, display: true);
+
+            // camera chip: which view, and the key that switches it
+            if (flow == null) return;
+            y += h + 10;
+            Ui.RoundBox(x, y, w, 40, Ui.PanelSoft);
+            Ui.RoundBox(x + 10, y + 7, 26, 26, Ui.PanelLight);
+            Ui.Label(x + 10, y + 8, 26, 26, "C", 20, Ui.Text, TextAnchor.UpperCenter, display: true);
+            Ui.Label(x + 46, y + 8, w - 54, 26, flow.Mirrored ? "CAMERA · FRONT" : "CAMERA · BEHIND GOAL", 20, Ui.Muted, display: true);
         }
 
         // ---------------- centre ----------------
@@ -122,12 +136,12 @@ namespace Keeper244.Game
                         col = Ui.Info;
                         break;
                     case RoundState.Cue:
-                        big = Direction(m.CurrentTarget, m.Settings.zones);
+                        big = Direction(m.CurrentTarget, m.Settings.zones, Mirrored);
                         small = "SHOT INCOMING";
                         col = new Color(Ui.Cue.r, Ui.Cue.g, Ui.Cue.b, pulse);
                         break;
                     case RoundState.Flight:
-                        big = Direction(m.CurrentTarget, m.Settings.zones);
+                        big = Direction(m.CurrentTarget, m.Settings.zones, Mirrored);
                         col = Ui.Cue;
                         break;
                     case RoundState.Complete:
@@ -181,8 +195,17 @@ namespace Keeper244.Game
             Ui.RoundBox(x, y, w, h, Ui.Panel);
             Ui.Label(x + 20, y + 14, w - 40, 30, "MUSCLE ACTIVATION", 24, Ui.Muted, display: true);
 
-            Bar(x + 50, y + 60, shownTriceps, th.OnTriceps, th.FarTriceps, showFar, "< TRICEPS");
-            Bar(x + 175, y + 60, shownBiceps, th.OnBiceps, th.FarBiceps, showFar, "BICEPS >");
+            // each bar sits on the side of the screen its muscle moves the keeper to
+            if (Mirrored)
+            {
+                Bar(x + 50, y + 60, shownBiceps, th.OnBiceps, th.FarBiceps, showFar, "< BICEPS");
+                Bar(x + 175, y + 60, shownTriceps, th.OnTriceps, th.FarTriceps, showFar, "TRICEPS >");
+            }
+            else
+            {
+                Bar(x + 50, y + 60, shownTriceps, th.OnTriceps, th.FarTriceps, showFar, "< TRICEPS");
+                Bar(x + 175, y + 60, shownBiceps, th.OnBiceps, th.FarBiceps, showFar, "BICEPS >");
+            }
 
             float ly = y + h - 36;
             Ui.Fill(x + 24, ly + 11, 24, 3, Ui.Text);
@@ -227,11 +250,12 @@ namespace Keeper244.Game
             float y = Ui.RefHeight - h - 30;
             int half = (zones - 1) / 2;
             int keeper = game.Keeper.CommandedZoneSlot;
+            bool mirrored = Mirrored;
 
             Ui.RoundBox(x0 - 12, y - 12, total + 24, h + 24, Ui.Panel);
             for (int i = 0; i < zones; i++)
             {
-                int slot = i - half;
+                int slot = mirrored ? half - i : i - half; // cells are in screen order, names too
                 float cx = x0 + i * cell;
                 bool isKeeper = slot == keeper;
                 bool isTarget = m != null && m.HasActiveShot && slot == m.CurrentTarget;
@@ -245,10 +269,12 @@ namespace Keeper244.Game
             }
         }
 
-        static string Direction(int target, int zones)
+        /// <summary>Where the shot goes, as seen on screen.</summary>
+        static string Direction(int target, int zones, bool mirrored)
         {
             if (target == 0) return "CENTRE · STAY RELAXED";
-            string side = target > 0 ? "RIGHT >>" : "<< LEFT";
+            int onScreen = mirrored ? -target : target;
+            string side = onScreen > 0 ? "RIGHT >>" : "<< LEFT";
             if (zones == 5) return (System.Math.Abs(target) == 2 ? "FAR " : "NEAR ") + side;
             return side;
         }

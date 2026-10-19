@@ -33,6 +33,9 @@ data/sessions/<YYYYMMDD_HHMMSS>_<participant>_unity/
 | `time_in_target_before_arrival` | Continuous time in the target slot ending at arrival (0 if not in it at arrival) |
 | `false_activations_in_wait_rest` | Times the player left rest while the game waited for the rest gate before this shot |
 | `mean_a_b`, `mean_a_t` | Mean normalised biceps / triceps activation over that final hold. Empty if the target was not held at arrival |
+| `camera` | Play view when the ball arrived: `behind` (behind the goal, the keeper's own view) or `front` (TV view from behind the striker). Added after the first P2 logs; older files don't have it. Compare reaction times only within one view |
+
+Slots are always **keeper-relative**, whatever the camera: positive = the keeper's right = biceps. In the `front` view the keeper faces the player, so a positive slot appears on the *left* of the screen (the HUD and the keyboard flip to match the screen; the EMG mapping never flips).
 
 Metrics are measured once per rendered frame (≈ 16 ms at 60 fps). P8 analysis should prefer the bridge's 100 Hz log for timing.
 

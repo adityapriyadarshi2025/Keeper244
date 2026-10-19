@@ -15,6 +15,10 @@ namespace Keeper244.Controls
     ///   nothing held   relaxed       → slot 0 (centre)
     ///   A and D held   co-contraction→ slot 0 (ambiguous, like the EMG rule)
     ///
+    /// With <see cref="MirrorLeftRight"/> (front camera: the keeper faces the screen) the keys follow
+    /// the SCREEN instead: A / ← moves the keeper to the left of the screen, which is his right
+    /// (biceps, slot +1/+2). The real EMG mapping never flips.
+    ///
     /// It also fakes smooth activation values (ramping like an EMG envelope) so the HUD bars have
     /// something realistic to draw before real EMG exists.
     /// Runs before other scripts each frame, so the game reads this frame's keys (no 1-frame lag).
@@ -45,6 +49,9 @@ namespace Keeper244.Controls
         public string SourceName => "Keyboard";
         public ChannelThresholds Thresholds => ChannelThresholds.Placeholder;
 
+        /// <summary>Keys follow the screen when the keeper faces the camera (set by GameFlow).</summary>
+        public bool MirrorLeftRight { get; set; }
+
         void Update()
         {
             var kb = Keyboard.current;
@@ -55,8 +62,10 @@ namespace Keeper244.Controls
                 return;
             }
 
-            bool right = kb.dKey.isPressed || kb.rightArrowKey.isPressed;
-            bool left = kb.aKey.isPressed || kb.leftArrowKey.isPressed;
+            bool screenRight = kb.dKey.isPressed || kb.rightArrowKey.isPressed;
+            bool screenLeft = kb.aKey.isPressed || kb.leftArrowKey.isPressed;
+            bool right = MirrorLeftRight ? screenLeft : screenRight;  // keeper's right = biceps
+            bool left = MirrorLeftRight ? screenRight : screenLeft;   // keeper's left = triceps
             bool strong = kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed;
 
             float bicepsTarget = right ? (strong ? strongLevel : lightLevel) : restLevel;

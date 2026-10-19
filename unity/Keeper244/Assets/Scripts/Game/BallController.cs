@@ -52,7 +52,7 @@ namespace Keeper244.Game
             from = transform.position;
             to = saved
                 ? new Vector3(from.x * 0.6f, radius, from.z + 4f)                       // parried back into play
-                : new Vector3(from.x, Mathf.Max(radius, from.y - 0.4f), from.z - 1.6f); // into the net
+                : new Vector3(from.x, radius, from.z - 1.5f);                           // into the net, drops to the grass
             duration = outcomeSeconds;
             t = 0f;
             phase = Phase.Outcome;

@@ -149,8 +149,9 @@ namespace Keeper244.EditorTools
 
             // ---------------- goals ----------------
             var nets = new List<Renderer>();
-            var homeGoal = BuildGoal(stadium, "HomeGoal", 0f, 0f, goalWhite, net, nets, out var homeNet);
-            BuildGoal(stadium, "FarGoal", PitchLength, 180f, goalWhite, net, nets, out _);
+            var homeBackParts = new List<Renderer>(); // hidden by the camera when it is behind this goal
+            var homeGoal = BuildGoal(stadium, "HomeGoal", 0f, 0f, goalWhite, net, nets, homeBackParts, out var homeNet);
+            BuildGoal(stadium, "FarGoal", PitchLength, 180f, goalWhite, net, nets, null, out _);
 
             // ---------------- stands, boards, lights ----------------
             var crowd = new List<Renderer>();
@@ -266,6 +267,10 @@ namespace Keeper244.EditorTools
             CopyComponentsArray(soDresser, "ledBoards", leds);
             soDresser.ApplyModifiedPropertiesWithoutUndo();
 
+            var soCam = new SerializedObject(director);
+            CopyComponentsArray(soCam, "hideWhenBehindGoal", homeBackParts);
+            soCam.ApplyModifiedPropertiesWithoutUndo();
+
             string[] levelFiles = { "L0_FreePlay", "L1_ThreeZones", "L2_FiveZones", "L3_Pro" };
             var soFlow = new SerializedObject(flow);
             soFlow.FindProperty("game").objectReferenceValue = gm;
@@ -288,7 +293,7 @@ namespace Keeper244.EditorTools
             AssetDatabase.SaveAssets();
 
             Selection.activeGameObject = gameGo;
-            Debug.Log($"[Keeper244] Built {ScenePath}. Press Play and pick a level in the menu. A/D = near, Shift = far, Esc = pause.");
+            Debug.Log($"[Keeper244] Built {ScenePath}. Press Play and pick a level in the menu. A/D = near, Shift = far, C = camera, Esc = pause.");
         }
 
         // ---------------- pieces ----------------
@@ -327,8 +332,12 @@ namespace Keeper244.EditorTools
             }
         }
 
-        /// <summary>Goal with frame, back stanchions and net panels. `yaw` 0 = faces +z (home), 180 = faces −z (far).</summary>
-        static Transform BuildGoal(Transform parent, string name, float z, float yaw, Material frame, Material netMat, List<Renderer> nets, out Transform netGroup)
+        /// <summary>
+        /// Goal with frame, back stanchions and net panels. `yaw` 0 = faces +z (home), 180 = faces −z (far).
+        /// `backParts` (optional) collects everything behind the goal line (net panels and back bars).
+        /// </summary>
+        static Transform BuildGoal(Transform parent, string name, float z, float yaw, Material frame, Material netMat,
+                                   List<Renderer> nets, List<Renderer> backParts, out Transform netGroup)
         {
             var root = Group(name, parent);
             root.position = new Vector3(0f, 0f, z);
@@ -346,20 +355,32 @@ namespace Keeper244.EditorTools
             // thin stanchions holding the net at the back
             float back = -NetDepth;
             const float bar = 0.05f;
-            Prim(PrimitiveType.Cube, "BackBar_Top", W(0f, FieldGeometry.GoalHeight, back), new Vector3(FieldGeometry.GoalWidth + 0.2f, bar, bar), frame, root, rot);
-            Prim(PrimitiveType.Cube, "BackBar_Ground", W(0f, bar / 2f, back), new Vector3(FieldGeometry.GoalWidth + 0.2f, bar, bar), frame, root, rot);
-            Prim(PrimitiveType.Cube, "BackPost_L", W(-(halfW + 0.1f), FieldGeometry.GoalHeight / 2f, back), new Vector3(bar, FieldGeometry.GoalHeight, bar), frame, root, rot);
-            Prim(PrimitiveType.Cube, "BackPost_R", W(halfW + 0.1f, FieldGeometry.GoalHeight / 2f, back), new Vector3(bar, FieldGeometry.GoalHeight, bar), frame, root, rot);
+            var back4 = new[]
+            {
+                Prim(PrimitiveType.Cube, "BackBar_Top", W(0f, FieldGeometry.GoalHeight, back), new Vector3(FieldGeometry.GoalWidth + 0.2f, bar, bar), frame, root, rot),
+                Prim(PrimitiveType.Cube, "BackBar_Ground", W(0f, bar / 2f, back), new Vector3(FieldGeometry.GoalWidth + 0.2f, bar, bar), frame, root, rot),
+                Prim(PrimitiveType.Cube, "BackPost_L", W(-(halfW + 0.1f), FieldGeometry.GoalHeight / 2f, back), new Vector3(bar, FieldGeometry.GoalHeight, bar), frame, root, rot),
+                Prim(PrimitiveType.Cube, "BackPost_R", W(halfW + 0.1f, FieldGeometry.GoalHeight / 2f, back), new Vector3(bar, FieldGeometry.GoalHeight, bar), frame, root, rot),
+            };
 
             netGroup = Group("Net", root);
             netGroup.localPosition = Vector3.zero;
             netGroup.localRotation = Quaternion.identity;
             float nw = FieldGeometry.GoalWidth + 0.2f, nh = FieldGeometry.GoalHeight;
             Vector3 fwd = root.forward;
-            nets.Add(FacingQuad("Net_Back", W(0f, nh / 2f, back), new Vector2(nw, nh), fwd, netMat, netGroup).GetComponent<Renderer>());
-            nets.Add(FacingQuad("Net_Roof", W(0f, nh, back / 2f), new Vector2(nw, NetDepth), Vector3.down, netMat, netGroup, up: fwd).GetComponent<Renderer>());
-            nets.Add(FacingQuad("Net_Left", W(-(halfW + 0.1f), nh / 2f, back / 2f), new Vector2(NetDepth, nh), root.right, netMat, netGroup).GetComponent<Renderer>());
-            nets.Add(FacingQuad("Net_Right", W(halfW + 0.1f, nh / 2f, back / 2f), new Vector2(NetDepth, nh), -root.right, netMat, netGroup).GetComponent<Renderer>());
+            var panels = new[]
+            {
+                FacingQuad("Net_Back", W(0f, nh / 2f, back), new Vector2(nw, nh), fwd, netMat, netGroup).GetComponent<Renderer>(),
+                FacingQuad("Net_Roof", W(0f, nh, back / 2f), new Vector2(nw, NetDepth), Vector3.down, netMat, netGroup, up: fwd).GetComponent<Renderer>(),
+                FacingQuad("Net_Left", W(-(halfW + 0.1f), nh / 2f, back / 2f), new Vector2(NetDepth, nh), root.right, netMat, netGroup).GetComponent<Renderer>(),
+                FacingQuad("Net_Right", W(halfW + 0.1f, nh / 2f, back / 2f), new Vector2(NetDepth, nh), -root.right, netMat, netGroup).GetComponent<Renderer>(),
+            };
+            nets.AddRange(panels);
+            if (backParts != null)
+            {
+                backParts.AddRange(panels);
+                foreach (var go in back4) backParts.Add(go.GetComponent<Renderer>());
+            }
             return root;
         }
 
