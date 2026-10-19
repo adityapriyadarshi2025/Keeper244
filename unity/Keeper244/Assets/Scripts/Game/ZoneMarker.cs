@@ -10,9 +10,9 @@ namespace Keeper244.Game
     [RequireComponent(typeof(MeshRenderer))]
     public sealed class ZoneMarker : MonoBehaviour
     {
-        [SerializeField] Color cueColor = new Color(1f, 0.85f, 0.1f);
-        [SerializeField] Color saveColor = new Color(0.2f, 0.9f, 0.3f);
-        [SerializeField] Color goalColor = new Color(0.95f, 0.2f, 0.2f);
+        [ColorUsage(false, true)] [SerializeField] Color cueColor = new Color(2.6f, 2.0f, 0.2f);
+        [ColorUsage(false, true)] [SerializeField] Color saveColor = new Color(0.4f, 2.4f, 0.6f);
+        [ColorUsage(false, true)] [SerializeField] Color goalColor = new Color(2.6f, 0.4f, 0.4f);
         [Tooltip("Gap left at each side of the strip, metres.")]
         [SerializeField] float sideGap = 0.08f;
 

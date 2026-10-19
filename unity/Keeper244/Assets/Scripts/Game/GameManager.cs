@@ -35,6 +35,9 @@ namespace Keeper244.Game
         public IInputProvider Controls => controls;
         public LevelConfig Level => level;
         public KeeperController Keeper => keeper;
+        public BallController Ball => ball;
+        /// <summary>Where the current shot is going (valid from CUE).</summary>
+        public Vector3 ShotPoint => shotPoint;
         public bool IsRunning => level != null;
         public bool IsFreePlay => level != null && level.settings.freePlay;
         public bool Paused { get; set; }
@@ -126,7 +129,7 @@ namespace Keeper244.Game
         void OnWaitingForRest(int shotIndex)
         {
             ball.ResetToSpot();
-            striker.ResetPose();
+            if (shotIndex == 0) striker.ResetPose(); else striker.ReturnHome();
             marker.Hide();
         }
 
@@ -139,7 +142,7 @@ namespace Keeper244.Game
             shotPoint = new Vector3(FieldGeometry.ZoneCentreX(target, zones) + jitter, height, keeper.transform.position.z);
 
             marker.Show(target, zones);
-            striker.AimAt(shotPoint);
+            striker.BeginRunUp(shotPoint, machine.Settings.cueSeconds);
             CueStarted?.Invoke(shotIndex, target);
         }
 

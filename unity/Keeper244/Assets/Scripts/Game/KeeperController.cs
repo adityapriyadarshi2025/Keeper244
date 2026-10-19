@@ -14,7 +14,7 @@ namespace Keeper244.Game
         [SerializeField] float adjacentSlotSeconds = 0.15f;
 
         [Tooltip("Body lean at the far slot, degrees. Purely visual.")]
-        [SerializeField] float maxLeanDegrees = 12f;
+        [SerializeField] float maxLeanDegrees = 0f; // the KeeperAnimator rolls the body instead
 
         [Tooltip("Height of the little jump after a save, metres.")]
         [SerializeField] float celebrateHeight = 0.25f;

@@ -4,12 +4,12 @@ using UnityEngine;
 namespace Keeper244.Game
 {
     /// <summary>
-    /// In-game HUD (brief §3.7):
-    ///  - top-left: level, input + signal (OK / NO SIGNAL), what to do now
-    ///  - top-right: score, shot n/N, saves, streak and multiplier
+    /// Broadcast-style HUD (brief §3.7):
+    ///  - top: scoreboard bar (level, shot n/N, saves, score, streak multiplier)
+    ///  - top-left: input + signal chip (OK / NO SIGNAL)
+    ///  - centre: big call-outs (RELAX, SHOT INCOMING, SAVE!, GOAL) and the points popup
     ///  - bottom-left: activation bars, triceps left and biceps right, with θ_on and θ_far lines
-    ///  - bottom-centre: slot strip (keeper slot filled, target outlined during CUE/FLIGHT)
-    ///  - centre: points popup after each shot
+    ///  - bottom-centre: slot strip (keeper filled, target outlined during CUE/FLIGHT)
     /// </summary>
     public sealed class HudOverlay : MonoBehaviour
     {
@@ -17,10 +17,11 @@ namespace Keeper244.Game
         [SerializeField] GameFlow flow;
         [Tooltip("Activation shown at the top of the bars (fraction of MVC).")]
         [SerializeField] float barFullScale = 0.8f;
-        [SerializeField] float popupSeconds = 1.3f;
+        [SerializeField] float popupSeconds = 1.4f;
 
         ShotResult popup;
         float popupStart = -10f;
+        float shownBiceps, shownTriceps;
 
         void OnEnable()
         {
@@ -41,157 +42,102 @@ namespace Keeper244.Game
         void OnGUI()
         {
             if (game == null || !game.IsRunning) return;
-            if (flow != null && flow.CurrentScreen == GameFlow.ScreenId.Menu) return;
+            if (flow != null && (flow.CurrentScreen == GameFlow.ScreenId.Menu || flow.CurrentScreen == GameFlow.ScreenId.Intro)) return;
             GUI.depth = 10;
 
-            DrawStatus();
-            if (!game.IsFreePlay) DrawScore();
+            Ui.TopShade(220f);
+            DrawScoreboard();
+            DrawSignal();
+            DrawCallout();
             DrawBars();
             DrawSlotStrip();
             DrawPopup();
         }
 
-        void DrawStatus()
+        // ---------------- top ----------------
+
+        void DrawScoreboard()
+        {
+            var s = game.Level.settings;
+            var m = game.Machine;
+            float h = 74f;
+            float w = game.IsFreePlay ? 420f : 900f;
+            float x = (Ui.Width - w) / 2f, y = 22f;
+            Ui.RoundBox(x, y, w, h, Ui.Panel);
+
+            // level tag
+            Ui.RoundBox(x + 8, y + 8, 92, h - 16, Ui.Accent);
+            Ui.Label(x + 8, y + 12, 92, h - 16, s.levelId, 40, Color.black, TextAnchor.MiddleCenter, display: true);
+            Ui.Label(x + 116, y + 10, 300, 30, s.levelName.ToUpperInvariant(), 26, Ui.Text, display: true);
+            Ui.Label(x + 116, y + 40, 300, 26, s.freePlay ? "FREE PLAY · ESC = MENU" : $"{s.zones} ZONES · CUE {s.cueSeconds:0.0} S", 18, Ui.Muted);
+            if (m == null) return;
+
+            float cx = x + 420;
+            Stat(cx, y, "SHOT", $"{Mathf.Min(m.ShotIndex + 1, m.ShotCount)}/{m.ShotCount}");
+            Stat(cx + 120, y, "SAVES", m.Saves.ToString());
+            Stat(cx + 220, y, "SCORE", m.Score.ToString(), Ui.Accent);
+
+            double mult = ScoreRules.Multiplier(m.Streak);
+            Color chip = m.Streak > 0 ? Ui.Good : Ui.PanelLight;
+            Ui.RoundBox(x + w - 100, y + 14, 86, h - 28, chip);
+            Ui.Label(x + w - 100, y + 16, 86, h - 28, $"×{mult:0.0}", 30, m.Streak > 0 ? Color.black : Ui.Muted, TextAnchor.MiddleCenter, display: true);
+        }
+
+        static void Stat(float x, float y, string label, string value, Color? valueColour = null)
+        {
+            Ui.Label(x, y + 8, 110, 20, label, 16, Ui.Muted, TextAnchor.UpperLeft);
+            Ui.Label(x, y + 26, 130, 46, value, 40, valueColour ?? Ui.Text, TextAnchor.UpperLeft, display: true);
+        }
+
+        void DrawSignal()
         {
             var c = game.Controls;
-            var m = game.Machine;
-            float x = 20, y = 20, w = 520, h = 150;
-            Ui.PanelBox(x, y, w, h);
-            Ui.Label(x + 18, y + 14, w - 36, 36, game.Level.settings.levelName, 28, Ui.Text, bold: true);
-
             bool ok = c != null && c.HasSignal;
-            Ui.Fill(x + 20, y + 62, 16, 16, ok ? Ui.Good : Ui.Bad);
-            Ui.Label(x + 46, y + 56, w - 60, 30, ok ? $"{c.SourceName}  ·  signal OK" : "NO SIGNAL", 20, ok ? Ui.Muted : Ui.Bad, bold: !ok);
+            float x = 24, y = 30, w = 250, h = 48;
+            Ui.RoundBox(x, y, w, h, Ui.PanelSoft);
+            Ui.RoundBox(x + 14, y + 16, 16, 16, ok ? Ui.Good : Ui.Bad);
+            Ui.Label(x + 42, y + 10, w - 50, 30, ok ? $"{c.SourceName.ToUpperInvariant()} · SIGNAL OK" : "NO SIGNAL", 22, ok ? Ui.Text : Ui.Bad, display: true);
+        }
 
-            string prompt;
-            Color col = Ui.Info;
+        // ---------------- centre ----------------
+
+        void DrawCallout()
+        {
+            var m = game.Machine;
+            string big = null, small = null;
+            Color col = Ui.Text;
+            float pulse = 0.85f + 0.15f * Mathf.Sin(Time.unscaledTime * 6f);
+
             if (game.IsFreePlay)
             {
-                prompt = "Free play: flex to move the keeper.  Esc = menu";
+                small = "FLEX TO MOVE THE KEEPER";
             }
             else
             {
                 switch (m.State)
                 {
                     case RoundState.WaitRest:
-                        prompt = $"Relax…  ({m.RestTime:0.0} / {m.Settings.restGateSeconds:0.0} s)";
+                        big = "RELAX";
+                        small = $"HOLD STILL  {m.RestTime:0.0} / {m.Settings.restGateSeconds:0.0} S";
+                        col = Ui.Info;
                         break;
                     case RoundState.Cue:
-                        prompt = $"Shot coming {Direction(m.CurrentTarget, m.Settings.zones)}";
-                        col = Ui.Cue;
+                        big = Direction(m.CurrentTarget, m.Settings.zones);
+                        small = "SHOT INCOMING";
+                        col = new Color(Ui.Cue.r, Ui.Cue.g, Ui.Cue.b, pulse);
                         break;
                     case RoundState.Flight:
-                        prompt = "Ball in flight!";
+                        big = Direction(m.CurrentTarget, m.Settings.zones);
                         col = Ui.Cue;
                         break;
-                    case RoundState.Feedback:
-                        bool saved = game.LastShot != null && game.LastShot.Saved;
-                        prompt = saved ? "SAVE!" : "GOAL";
-                        col = saved ? Ui.Good : Ui.Bad;
-                        break;
                     case RoundState.Complete:
-                        prompt = "Level complete";
+                        big = "FULL TIME";
                         col = Ui.Good;
                         break;
-                    default:
-                        prompt = "";
-                        break;
                 }
             }
-            Ui.Label(x + 18, y + 96, w - 36, 40, prompt, 26, col, bold: true);
-        }
-
-        void DrawScore()
-        {
-            var m = game.Machine;
-            float w = 340, h = 190;
-            float x = Ui.Width - w - 20, y = 20;
-            Ui.PanelBox(x, y, w, h);
-            Ui.Label(x + 20, y + 14, w - 40, 24, "SCORE", 18, Ui.Muted);
-            Ui.Label(x + 20, y + 36, w - 40, 64, m.Score.ToString(), 54, Ui.Text, bold: true);
-            int shotNo = Mathf.Min(m.ShotIndex + 1, m.ShotCount);
-            Ui.Label(x + 20, y + 106, w - 40, 30, $"Shot {shotNo} / {m.ShotCount}     Saves {m.Saves}", 22, Ui.Text);
-            double mult = ScoreRules.Multiplier(m.Streak);
-            Ui.Label(x + 20, y + 140, w - 40, 30, $"Streak {m.Streak}   ×{mult:0.0}", 22, m.Streak > 0 ? Ui.Accent : Ui.Muted);
-        }
-
-        void DrawBars()
-        {
-            var c = game.Controls;
-            if (c == null) return;
-            var th = c.Thresholds;
-            bool showFar = game.Zones == 5;
-
-            float x = 20, w = 300, h = 360;
-            float y = Ui.RefHeight - h - 20;
-            Ui.PanelBox(x, y, w, h);
-            Ui.Label(x + 18, y + 12, w - 36, 26, "MUSCLE ACTIVATION", 18, Ui.Muted);
-
-            // Triceps on the left (moves the keeper left), biceps on the right — like the movement.
-            Bar(x + 50, y + 54, c.ActivationTriceps, th.OnTriceps, th.FarTriceps, showFar, "← TRICEPS");
-            Bar(x + 175, y + 54, c.ActivationBiceps, th.OnBiceps, th.FarBiceps, showFar, "BICEPS →");
-
-            float ly = y + h - 34;
-            Ui.Fill(x + 20, ly + 10, 22, 3, Ui.Text);
-            Ui.Label(x + 48, ly, 90, 24, "on", 16, Ui.Muted);
-            if (showFar)
-            {
-                Ui.Fill(x + 110, ly + 10, 22, 3, Ui.Accent);
-                Ui.Label(x + 138, ly, 120, 24, "far", 16, Ui.Muted);
-            }
-        }
-
-        void Bar(float x, float y, float value, float on, float far, bool showFar, string label)
-        {
-            const float bw = 76f, bh = 220f;
-            Ui.Fill(x, y, bw, bh, Ui.PanelLight);
-            float f = Mathf.Clamp01(value / barFullScale);
-            Color fill = value >= far && showFar ? Ui.Accent : value >= on ? Ui.Cue : new Color(0.55f, 0.6f, 0.65f);
-            Ui.Fill(x, y + bh * (1f - f), bw, bh * f, fill);
-
-            Line(x, y, bw, bh, on, Ui.Text);
-            if (showFar) Line(x, y, bw, bh, far, Ui.Accent);
-
-            Ui.Label(x - 20, y + bh + 6, bw + 40, 26, label, 17, Ui.Text, TextAnchor.UpperCenter, bold: true);
-            Ui.Label(x - 20, y + bh + 30, bw + 40, 24, value.ToString("0.00"), 17, Ui.Muted, TextAnchor.UpperCenter);
-        }
-
-        void Line(float x, float y, float bw, float bh, float level, Color c)
-        {
-            float f = Mathf.Clamp01(level / barFullScale);
-            Ui.Fill(x - 6, y + bh * (1f - f) - 1.5f, bw + 12, 3f, c);
-        }
-
-        void DrawSlotStrip()
-        {
-            int zones = game.Zones;
-            var m = game.Machine;
-            string[] names = zones == 3 ? new[] { "LEFT", "CENTRE", "RIGHT" } : new[] { "L2", "L1", "C", "R1", "R2" };
-            float cell = zones == 3 ? 170f : 110f;
-            float h = 70f;
-            float total = cell * zones;
-            float x0 = (Ui.Width - total) / 2f;
-            float y = Ui.RefHeight - h - 28;
-            int half = (zones - 1) / 2;
-            int keeper = game.Keeper.CommandedZoneSlot;
-
-            Ui.Fill(x0 - 8, y - 8, total + 16, h + 16, Ui.Panel);
-            for (int i = 0; i < zones; i++)
-            {
-                int slot = i - half;
-                float cx = x0 + i * cell;
-                bool isKeeper = slot == keeper;
-                Ui.Fill(cx + 4, y, cell - 8, h, isKeeper ? Ui.Accent : Ui.PanelLight);
-                Ui.Label(cx, y + 18, cell, 34, names[i], 22, isKeeper ? Color.black : Ui.Text, TextAnchor.UpperCenter, bold: isKeeper);
-
-                if (m != null && m.HasActiveShot && slot == m.CurrentTarget)
-                {
-                    Color frame = Ui.Cue;
-                    if (m.State == RoundState.Feedback && game.LastShot != null)
-                        frame = game.LastShot.Saved ? Ui.Good : Ui.Bad;
-                    Ui.Frame(cx + 4, y, cell - 8, h, frame, 5f);
-                }
-            }
+            if (big != null) Ui.ShadowLabel(0, 150, Ui.Width, 110, big, 92, col);
+            if (small != null) Ui.ShadowLabel(0, big != null ? 250 : 150, Ui.Width, 40, small, 30, Ui.Text);
         }
 
         void DrawPopup()
@@ -199,29 +145,110 @@ namespace Keeper244.Game
             if (popup == null) return;
             float t = Time.unscaledTime - popupStart;
             if (t > popupSeconds) return;
-            float alpha = 1f - Mathf.Clamp01((t - popupSeconds * 0.6f) / (popupSeconds * 0.4f));
-            float rise = 30f * t / popupSeconds;
+            float alpha = 1f - Mathf.Clamp01((t - popupSeconds * 0.65f) / (popupSeconds * 0.35f));
+            float pop = 1f + 0.25f * Mathf.Exp(-t * 10f);            // quick scale-in feel via size
+            float y = 300f - 30f * t / popupSeconds;
 
-            float w = 420f;
-            float x = (Ui.Width - w) / 2f, y = 190f - rise;
             if (popup.Saved)
             {
-                var c = new Color(Ui.Good.r, Ui.Good.g, Ui.Good.b, alpha);
-                Ui.Label(x, y, w, 80, $"+{popup.Points}", 64, c, TextAnchor.UpperCenter, bold: true);
-                string sub = (ScoreRules.IsFar(popup.Target, popup.Zones) ? "far save" : "save") +
-                             (popup.Multiplier > 1.0 ? $"   ×{popup.Multiplier:0.0} streak" : "");
-                Ui.Label(x, y + 78, w, 34, sub, 24, new Color(1f, 1f, 1f, alpha), TextAnchor.UpperCenter);
+                Ui.ShadowLabel(0, y - 150, Ui.Width, 120, "SAVE!", Mathf.RoundToInt(110 * pop), new Color(Ui.Good.r, Ui.Good.g, Ui.Good.b, alpha));
+                string sub = $"+{popup.Points}" + (ScoreRules.IsFar(popup.Target, popup.Zones) ? "  FAR SAVE" : "") +
+                             (popup.Multiplier > 1.0 ? $"  ×{popup.Multiplier:0.0} STREAK" : "");
+                Ui.ShadowLabel(0, y - 30, Ui.Width, 60, sub, 44, new Color(1f, 1f, 1f, alpha));
             }
             else
             {
-                Ui.Label(x, y, w, 80, "GOAL", 64, new Color(Ui.Bad.r, Ui.Bad.g, Ui.Bad.b, alpha), TextAnchor.UpperCenter, bold: true);
+                Ui.ShadowLabel(0, y - 150, Ui.Width, 120, "GOAL", Mathf.RoundToInt(110 * pop), new Color(Ui.Bad.r, Ui.Bad.g, Ui.Bad.b, alpha));
+                string why = popup.Undershoot ? "NOT FAR ENOUGH" : popup.Overshoot ? "TOO FAR" : popup.WrongDirection ? "WRONG WAY" : "";
+                if (why.Length > 0) Ui.ShadowLabel(0, y - 30, Ui.Width, 60, why, 40, new Color(1f, 1f, 1f, alpha));
+            }
+        }
+
+        // ---------------- bottom ----------------
+
+        void DrawBars()
+        {
+            var c = game.Controls;
+            if (c == null) return;
+            var th = c.Thresholds;
+            bool showFar = game.Zones == 5;
+            float k = 1f - Mathf.Exp(-Time.unscaledDeltaTime * 20f);
+            shownBiceps = Mathf.Lerp(shownBiceps, c.ActivationBiceps, k);
+            shownTriceps = Mathf.Lerp(shownTriceps, c.ActivationTriceps, k);
+
+            float w = 300, h = 380;
+            float x = 24, y = Ui.RefHeight - h - 24;
+            Ui.RoundBox(x, y, w, h, Ui.Panel);
+            Ui.Label(x + 20, y + 14, w - 40, 30, "MUSCLE ACTIVATION", 24, Ui.Muted, display: true);
+
+            Bar(x + 50, y + 60, shownTriceps, th.OnTriceps, th.FarTriceps, showFar, "< TRICEPS");
+            Bar(x + 175, y + 60, shownBiceps, th.OnBiceps, th.FarBiceps, showFar, "BICEPS >");
+
+            float ly = y + h - 36;
+            Ui.Fill(x + 24, ly + 11, 24, 3, Ui.Text);
+            Ui.Label(x + 54, ly, 80, 26, "ON", 18, Ui.Muted, display: true);
+            if (showFar)
+            {
+                Ui.Fill(x + 120, ly + 11, 24, 3, Ui.Accent);
+                Ui.Label(x + 150, ly, 120, 26, "FAR", 18, Ui.Muted, display: true);
+            }
+        }
+
+        void Bar(float x, float y, float value, float on, float far, bool showFar, string label)
+        {
+            const float bw = 76f, bh = 220f;
+            Ui.RoundBox(x, y, bw, bh, Ui.PanelLight);
+            float f = Mathf.Clamp01(value / barFullScale);
+            Color fill = showFar && value >= far ? Ui.Accent : value >= on ? Ui.Cue : new Color(0.55f, 0.62f, 0.7f);
+            if (f > 0.02f) Ui.RoundBox(x, y + bh * (1f - f), bw, bh * f, fill);
+
+            Line(x, y, bw, bh, on, Ui.Text);
+            if (showFar) Line(x, y, bw, bh, far, Ui.Accent);
+
+            Ui.Label(x - 25, y + bh + 8, bw + 50, 28, label, 22, Ui.Text, TextAnchor.UpperCenter, display: true);
+            Ui.Label(x - 25, y + bh + 34, bw + 50, 26, value.ToString("0.00"), 20, Ui.Muted, TextAnchor.UpperCenter);
+        }
+
+        void Line(float x, float y, float bw, float bh, float level, Color c)
+        {
+            float f = Mathf.Clamp01(level / barFullScale);
+            Ui.Fill(x - 8, y + bh * (1f - f) - 1.5f, bw + 16, 3f, c);
+        }
+
+        void DrawSlotStrip()
+        {
+            int zones = game.Zones;
+            var m = game.Machine;
+            string[] names = zones == 3 ? new[] { "LEFT", "CENTRE", "RIGHT" } : new[] { "L2", "L1", "C", "R1", "R2" };
+            float cell = zones == 3 ? 180f : 116f;
+            float h = 76f;
+            float total = cell * zones;
+            float x0 = (Ui.Width - total) / 2f;
+            float y = Ui.RefHeight - h - 30;
+            int half = (zones - 1) / 2;
+            int keeper = game.Keeper.CommandedZoneSlot;
+
+            Ui.RoundBox(x0 - 12, y - 12, total + 24, h + 24, Ui.Panel);
+            for (int i = 0; i < zones; i++)
+            {
+                int slot = i - half;
+                float cx = x0 + i * cell;
+                bool isKeeper = slot == keeper;
+                bool isTarget = m != null && m.HasActiveShot && slot == m.CurrentTarget;
+                Color frame = Ui.Cue;
+                if (isTarget && m.State == RoundState.Feedback && game.LastShot != null)
+                    frame = game.LastShot.Saved ? Ui.Good : Ui.Bad;
+
+                if (isTarget) Ui.RoundBox(cx + 2, y - 4, cell - 4, h + 8, frame);
+                Ui.RoundBox(cx + 8, y + 3, cell - 16, h - 6, isKeeper ? Ui.Accent : new Color(0.16f, 0.2f, 0.26f, 1f));
+                Ui.Label(cx, y + 12, cell, 56, names[i], 34, isKeeper ? Color.black : Ui.Text, TextAnchor.UpperCenter, display: true);
             }
         }
 
         static string Direction(int target, int zones)
         {
-            if (target == 0) return "to the CENTRE: stay relaxed";
-            string side = target > 0 ? "RIGHT →" : "← LEFT";
+            if (target == 0) return "CENTRE · STAY RELAXED";
+            string side = target > 0 ? "RIGHT >>" : "<< LEFT";
             if (zones == 5) return (System.Math.Abs(target) == 2 ? "FAR " : "NEAR ") + side;
             return side;
         }

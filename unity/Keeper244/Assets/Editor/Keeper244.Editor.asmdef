@@ -2,7 +2,9 @@
     "name": "Keeper244.Editor",
     "rootNamespace": "Keeper244.EditorTools",
     "references": [
-        "Keeper244.Runtime"
+        "Keeper244.Runtime",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Core.Runtime"
     ],
     "includePlatforms": [
         "Editor"

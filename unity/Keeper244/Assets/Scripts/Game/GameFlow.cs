@@ -1,30 +1,39 @@
 using System;
 using Keeper244.Controls;
 using Keeper244.Core;
+using Keeper244.Look;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace Keeper244.Game
 {
     /// <summary>
-    /// Screens and session: main menu (participant ID, input, level select), pause, results,
-    /// unlock progression (pass a level at ≥ its unlock fraction to open the next) and logging.
+    /// Screens and session: main menu (participant ID, input, level cards with best score and
+    /// stars), a short intro card before each level, pause, results, unlock progression
+    /// (pass a level at ≥ its unlock fraction to open the next) and logging.
     ///
     /// Keys while playing: Esc = pause, R = restart level, F1 = debug panel.
     /// </summary>
     public sealed class GameFlow : MonoBehaviour
     {
-        public enum ScreenId { Menu, Playing, Paused, Results }
+        public enum ScreenId { Menu, Intro, Playing, Paused, Results }
 
         [SerializeField] GameManager game;
         [SerializeField] KeyboardInput keyboard;
+        [SerializeField] CameraDirector cameraDirector;
         [Tooltip("In menu order: L0 Free Play, L1, L2, L3 …")]
         [SerializeField] LevelConfig[] levels = Array.Empty<LevelConfig>();
         [Tooltip("Levels at or below this index are always open (1 = L0 and L1).")]
         [SerializeField] int alwaysUnlocked = 1;
+        [SerializeField] float introSeconds = 2.2f;
+
+        [Header("Fonts")]
+        [SerializeField] Font displayFont;
+        [SerializeField] Font bodyFont;
 
         const string PrefParticipant = "k244.participant";
         const string PrefUnlockedPrefix = "k244.unlocked.";
+        const string PrefBestPrefix = "k244.best.";
 
         ScreenId screen = ScreenId.Menu;
         string participant = "P01";
@@ -32,7 +41,9 @@ namespace Keeper244.Game
         bool unlockAll;
         int unlocked;
         int currentIndex = -1;
+        float introStart;
         LevelResult lastResult;
+        bool lastWasBest;
         SessionLog log;
         Vector2 menuScroll;
 
@@ -45,6 +56,8 @@ namespace Keeper244.Game
 
         void Awake()
         {
+            Ui.Display = displayFont;
+            Ui.Body = bodyFont;
             participant = PlayerPrefs.GetString(PrefParticipant, "P01");
             LoadUnlocks();
         }
@@ -77,9 +90,11 @@ namespace Keeper244.Game
 
         void Update()
         {
+            if (screen == ScreenId.Intro && Time.unscaledTime - introStart >= introSeconds)
+                BeginPlay();
+
             var kb = Keyboard.current;
             if (kb == null) return;
-
             if (kb.escapeKey.wasPressedThisFrame)
             {
                 if (screen == ScreenId.Playing) Pause();
@@ -90,13 +105,13 @@ namespace Keeper244.Game
 
         // ---------------- actions ----------------
 
+        /// <summary>Shows the intro card, then starts the level.</summary>
         public void StartLevel(int index)
         {
             if (index < 0 || index >= levels.Length || levels[index] == null) return;
             participant = SessionLog.SafeName(participant);
             PlayerPrefs.SetString(PrefParticipant, participant);
 
-            // One log folder per participant per run of the game.
             if (log == null || sessionParticipant != participant)
             {
                 log?.Dispose();
@@ -109,8 +124,16 @@ namespace Keeper244.Game
             currentIndex = index;
             lastResult = null;
             Time.timeScale = 1f;
+            game.StopLevel();
+            if (cameraDirector != null) cameraDirector.SetMenu(false);
+            screen = ScreenId.Intro;
+            introStart = Time.unscaledTime;
+        }
+
+        void BeginPlay()
+        {
             screen = ScreenId.Playing;
-            game.StartLevel(levels[index], Input);
+            game.StartLevel(levels[currentIndex], Input);
         }
 
         public void Pause()
@@ -132,12 +155,20 @@ namespace Keeper244.Game
             game.StopLevel();
             Time.timeScale = 1f;
             screen = ScreenId.Menu;
+            if (cameraDirector != null) cameraDirector.SetMenu(true);
             LoadUnlocks();
         }
 
         bool IsUnlocked(int index) => unlockAll || index <= Mathf.Max(unlocked, alwaysUnlocked);
 
-        void LoadUnlocks() => unlocked = PlayerPrefs.GetInt(PrefUnlockedPrefix + SessionLog.SafeName(participant), alwaysUnlocked);
+        string Key(string prefix) => prefix + SessionLog.SafeName(participant);
+
+        void LoadUnlocks() => unlocked = PlayerPrefs.GetInt(Key(PrefUnlockedPrefix), alwaysUnlocked);
+
+        int Best(LevelConfig lv) => lv == null ? 0 : PlayerPrefs.GetInt($"{Key(PrefBestPrefix)}.{lv.settings.levelId}", 0);
+
+        static int Stars(double saveFraction, float unlock) =>
+            saveFraction >= 0.999 ? 3 : saveFraction >= Math.Max(unlock, 0.85) ? 2 : saveFraction >= unlock ? 1 : 0;
 
         void OnShotResolved(ShotResult r)
         {
@@ -149,12 +180,15 @@ namespace Keeper244.Game
         {
             lastResult = r;
             log?.WriteLevel(r, participant, Input.SourceName);
+
+            lastWasBest = r.Score > Best(CurrentLevel);
+            if (lastWasBest) PlayerPrefs.SetInt($"{Key(PrefBestPrefix)}.{r.LevelId}", r.Score);
             if (r.Passed && currentIndex + 1 > unlocked)
             {
                 unlocked = currentIndex + 1;
-                PlayerPrefs.SetInt(PrefUnlockedPrefix + SessionLog.SafeName(participant), unlocked);
-                PlayerPrefs.Save();
+                PlayerPrefs.SetInt(Key(PrefUnlockedPrefix), unlocked);
             }
+            PlayerPrefs.Save();
             screen = ScreenId.Results;
         }
 
@@ -166,6 +200,7 @@ namespace Keeper244.Game
             switch (screen)
             {
                 case ScreenId.Menu: DrawMenu(); break;
+                case ScreenId.Intro: DrawIntro(); break;
                 case ScreenId.Paused: DrawPause(); break;
                 case ScreenId.Results: DrawResults(); break;
             }
@@ -173,18 +208,26 @@ namespace Keeper244.Game
 
         void DrawMenu()
         {
-            float w = 820f, h = 900f;
-            float x = (Ui.Width - w) / 2f, y = (Ui.RefHeight - h) / 2f;
-            Ui.Fill(0, 0, Ui.Width, Ui.RefHeight, new Color(0f, 0f, 0f, 0.35f));
-            Ui.PanelBox(x, y, w, h);
+            Ui.Fill(0, 0, Ui.Width, Ui.RefHeight, new Color(0f, 0f, 0f, 0.25f));
 
-            Ui.Label(x + 40, y + 28, w - 80, 70, "KEEPER244", 56, Ui.Text, TextAnchor.UpperLeft, bold: true);
-            Ui.Label(x + 42, y + 98, w - 80, 34, "EMG goalkeeper · ES244 SSRP · Team 20", 22, Ui.Muted);
+            // ---- title, left ----
+            float lx = 90f;
+            Ui.ShadowLabel(lx, 150, 900, 170, "KEEPER<color=#FF9420>244</color>", 170, Ui.Text, TextAnchor.UpperLeft);
+            Ui.ShadowLabel(lx + 6, 320, 900, 50, "THE EMG GOALKEEPER", 44, Ui.Text, TextAnchor.UpperLeft);
+            Ui.Label(lx + 8, 380, 700, 120,
+                "Flex your biceps to dive right, your triceps to dive left, stay relaxed to hold the centre. " +
+                "Flex harder to reach the far post.", 24, Ui.Text);
+            Ui.Label(lx + 8, Ui.RefHeight - 90, 900, 30, "ES244 SENSOR SYSTEMS · SSRP PROJECT 15 · TEAM 20 · IIT GANDHINAGAR", 22, Ui.Muted, display: true);
+            Ui.Label(lx + 8, Ui.RefHeight - 60, 900, 30, "ESC PAUSE · R RESTART · F1 DEBUG · A/D NEAR · SHIFT FAR", 20, Ui.Muted, display: true);
 
-            GUILayout.BeginArea(Ui.R(x + 40, y + 150, w - 80, h - 190));
+            // ---- panel, right ----
+            float w = 640f, h = 860f;
+            float x = Ui.Width - w - 80f, y = (Ui.RefHeight - h) / 2f;
+            Ui.RoundBox(x, y, w, h, Ui.Panel);
 
-            GUILayout.Label("Participant ID", Ui.LabelStyle(22, Ui.Muted));
-            string edited = GUILayout.TextField(participant, 24, Ui.FieldStyle(26));
+            GUILayout.BeginArea(Ui.R(x + 36, y + 30, w - 72, h - 60));
+            GUILayout.Label("PARTICIPANT", Ui.LabelStyle(22, Ui.Muted, TextAnchor.UpperLeft, display: true));
+            string edited = GUILayout.TextField(participant, 24, Ui.FieldStyle(30));
             if (edited != participant)
             {
                 participant = edited;
@@ -192,57 +235,81 @@ namespace Keeper244.Game
             }
 
             GUILayout.Space(Ui.S(14));
-            GUILayout.Label("Input", Ui.LabelStyle(22, Ui.Muted));
+            GUILayout.Label("INPUT", Ui.LabelStyle(22, Ui.Muted, TextAnchor.UpperLeft, display: true));
             GUILayout.BeginHorizontal();
-            GUILayout.Toggle(true, "  Keyboard (A/D near, Shift = far)", Ui.ToggleStyle(22));
+            GUILayout.Toggle(true, "  Keyboard", Ui.ToggleStyle(24));
             GUI.enabled = false;
-            GUILayout.Toggle(false, "  EMG via UDP (Phase 3)", Ui.ToggleStyle(22));
+            GUILayout.Toggle(false, "  EMG (Phase 3)", Ui.ToggleStyle(24));
             GUI.enabled = true;
             GUILayout.EndHorizontal();
 
-            GUILayout.Space(Ui.S(18));
-            GUILayout.Label("Levels", Ui.LabelStyle(22, Ui.Muted));
-            menuScroll = GUILayout.BeginScrollView(menuScroll, GUILayout.Height(Ui.S(380)));
+            GUILayout.Space(Ui.S(16));
+            GUILayout.Label("CHOOSE A LEVEL", Ui.LabelStyle(22, Ui.Muted, TextAnchor.UpperLeft, display: true));
+            menuScroll = GUILayout.BeginScrollView(menuScroll, GUIStyle.none, GUIStyle.none, GUILayout.Height(Ui.S(440)));
             for (int i = 0; i < levels.Length; i++)
             {
                 var lv = levels[i];
                 if (lv == null) continue;
                 var s = lv.settings;
-                string detail = s.freePlay
-                    ? "practice · no shots · keeper follows your muscles"
-                    : $"{s.TotalShots} shots · {s.zones} zones · cue {s.cueSeconds:0.#} s · flight {s.flightSeconds:0.#} s";
                 bool open = IsUnlocked(i);
+                string detail = s.freePlay
+                    ? "Practice · no shots · keeper follows your muscles"
+                    : $"{s.TotalShots} shots · {s.zones} zones · cue {s.cueSeconds:0.#} s · flight {s.flightSeconds:0.#} s";
+                if (!open) detail = $"LOCKED · save {levels[Mathf.Max(0, i - 1)].settings.unlockSaveFraction:P0} in the previous level";
+                int best = Best(lv);
+                string bestTxt = !s.freePlay && best > 0 ? $"   <color=#FF9420>BEST {best}</color>" : "";
+                string label = $"<size={(int)Ui.S(34)}>{s.levelName.ToUpperInvariant()}</size>{bestTxt}\n<color=#AAB4C0>{detail}</color>";
+
                 GUI.enabled = open;
-                string label = open
-                    ? $"<b>{s.levelName}</b>   <size={(int)Ui.S(18)}>{detail}</size>"
-                    : $"<b>{s.levelName}</b>   <size={(int)Ui.S(18)}>locked · pass the previous level (≥ {levels[Mathf.Max(0, i - 1)].settings.unlockSaveFraction:P0})</size>";
-                if (GUILayout.Button(label, Ui.ButtonStyle(24))) StartLevel(i);
+                var style = Ui.CardStyle();
+                if (GUILayout.Button(label, style)) StartLevel(i);
                 GUI.enabled = true;
-                GUILayout.Space(Ui.S(6));
+                GUILayout.Space(Ui.S(10));
             }
             GUILayout.EndScrollView();
 
             unlockAll = GUILayout.Toggle(unlockAll, "  Unlock all levels (operator / experiments)", Ui.ToggleStyle(20));
-            GUILayout.Space(Ui.S(10));
-            GUILayout.Label("In game: Esc = pause · R = restart · F1 = debug panel", Ui.LabelStyle(18, Ui.Muted));
+            GUILayout.Space(Ui.S(6));
             GUILayout.Label($"Logs: {SessionLog.RootFolder}", Ui.LabelStyle(16, Ui.Muted));
             GUILayout.EndArea();
         }
 
+        void DrawIntro()
+        {
+            var lv = CurrentLevel;
+            if (lv == null) return;
+            var s = lv.settings;
+            float t = Time.unscaledTime - introStart;
+            float a = Mathf.Clamp01(t / 0.25f) * Mathf.Clamp01((introSeconds - t) / 0.3f);
+
+            float h = 300f, y = (Ui.RefHeight - h) / 2f - 60f;
+            Ui.Fill(0, y, Ui.Width, h, new Color(0.03f, 0.05f, 0.08f, 0.82f * a));
+            Ui.Fill(0, y, Ui.Width, 6, new Color(Ui.Accent.r, Ui.Accent.g, Ui.Accent.b, a));
+            Ui.Fill(0, y + h - 6, Ui.Width, 6, new Color(Ui.Accent.r, Ui.Accent.g, Ui.Accent.b, a));
+
+            Ui.ShadowLabel(0, y + 30, Ui.Width, 50, $"LEVEL {s.levelId.TrimStart('L')}", 40, new Color(Ui.Accent.r, Ui.Accent.g, Ui.Accent.b, a));
+            string title = s.levelName.Length > 3 ? s.levelName.Substring(s.levelName.IndexOf(' ') + 1) : s.levelName;
+            Ui.ShadowLabel(0, y + 76, Ui.Width, 130, title.ToUpperInvariant(), 120, new Color(1f, 1f, 1f, a));
+            string sub = s.freePlay
+                ? "PRACTICE — FLEX AND WATCH THE KEEPER FOLLOW"
+                : $"{s.TotalShots} SHOTS · {s.zones} ZONES · SAVE {s.unlockSaveFraction:P0} TO PASS";
+            Ui.ShadowLabel(0, y + 210, Ui.Width, 50, sub, 34, new Color(Ui.Muted.r, Ui.Muted.g, Ui.Muted.b, a));
+        }
+
         void DrawPause()
         {
-            float w = 460f, h = 360f;
+            float w = 520f, h = 420f;
             float x = (Ui.Width - w) / 2f, y = (Ui.RefHeight - h) / 2f;
-            Ui.Fill(0, 0, Ui.Width, Ui.RefHeight, new Color(0f, 0f, 0f, 0.45f));
-            Ui.PanelBox(x, y, w, h, Ui.Info);
-            Ui.Label(x, y + 26, w, 50, "Paused", 40, Ui.Text, TextAnchor.UpperCenter, bold: true);
+            Ui.Fill(0, 0, Ui.Width, Ui.RefHeight, new Color(0f, 0f, 0f, 0.5f));
+            Ui.RoundBox(x, y, w, h, Ui.Panel);
+            Ui.Label(x, y + 26, w, 80, "PAUSED", 72, Ui.Text, TextAnchor.UpperCenter, display: true);
 
-            GUILayout.BeginArea(Ui.R(x + 50, y + 100, w - 100, h - 120));
-            if (GUILayout.Button("Resume  (Esc)", Ui.ButtonStyle(24))) Resume();
-            GUILayout.Space(Ui.S(8));
-            if (GUILayout.Button("Restart level  (R)", Ui.ButtonStyle(24))) StartLevel(currentIndex);
-            GUILayout.Space(Ui.S(8));
-            if (GUILayout.Button("Main menu", Ui.ButtonStyle(24))) ShowMenu();
+            GUILayout.BeginArea(Ui.R(x + 60, y + 130, w - 120, h - 150));
+            if (GUILayout.Button("RESUME  (ESC)", Ui.ButtonStyle(30, primary: true))) Resume();
+            GUILayout.Space(Ui.S(12));
+            if (GUILayout.Button("RESTART LEVEL  (R)", Ui.ButtonStyle(30))) StartLevel(currentIndex);
+            GUILayout.Space(Ui.S(12));
+            if (GUILayout.Button("MAIN MENU", Ui.ButtonStyle(30))) ShowMenu();
             GUILayout.EndArea();
         }
 
@@ -251,55 +318,82 @@ namespace Keeper244.Game
             var r = lastResult;
             if (r == null) { ShowMenu(); return; }
 
-            float w = 820f, h = 760f;
+            float w = 900f, h = 820f;
             float x = (Ui.Width - w) / 2f, y = (Ui.RefHeight - h) / 2f;
             Ui.Fill(0, 0, Ui.Width, Ui.RefHeight, new Color(0f, 0f, 0f, 0.45f));
-            Ui.PanelBox(x, y, w, h, r.Passed ? Ui.Good : Ui.Bad);
+            Ui.RoundBox(x, y, w, h, Ui.Panel);
+            Ui.RoundBox(x, y, w, 10, r.Passed ? Ui.Good : Ui.Bad);
 
-            Ui.Label(x + 40, y + 28, w - 80, 50, r.LevelName, 40, Ui.Text, bold: true);
-            Ui.Label(x + 40, y + 90, w - 80, 70, $"{r.Saves} / {r.Shots} saves  ({r.SaveFraction:P0})", 48, Ui.Text, bold: true);
-            Ui.Label(x + 40, y + 160, w - 80, 40,
-                r.Passed ? "PASSED: next level unlocked" : $"Not passed: need {r.UnlockSaveFraction:P0} to unlock the next level",
-                26, r.Passed ? Ui.Good : Ui.Bad, bold: true);
+            Ui.Label(x, y + 30, w, 40, "FULL TIME · " + r.LevelName.ToUpperInvariant(), 34, Ui.Muted, TextAnchor.UpperCenter, display: true);
 
-            string rt = double.IsNaN(r.MeanReactionTime) ? "—" : $"{r.MeanReactionTime * 1000:0} ms";
-            Ui.Label(x + 40, y + 220, 360, 120, $"Score\n<size={(int)Ui.S(44)}><b>{r.Score}</b></size>", 22, Ui.Muted);
-            Ui.Label(x + 300, y + 220, 240, 120, $"Best streak\n<size={(int)Ui.S(44)}><b>{r.BestStreak}</b></size>", 22, Ui.Muted);
-            Ui.Label(x + 540, y + 220, 260, 120, $"Mean reaction\n<size={(int)Ui.S(44)}><b>{rt}</b></size>", 22, Ui.Muted);
-
-            // Per-zone saves, left to right
-            Ui.Label(x + 40, y + 350, w - 80, 30, "Saves per target zone", 22, Ui.Muted);
-            string[] names = r.Zones == 3 ? new[] { "LEFT", "CENTRE", "RIGHT" } : new[] { "L2", "L1", "C", "R1", "R2" };
-            float cellW = (w - 80) / r.Zones;
-            for (int i = 0; i < r.Zones && i < r.ZoneShots.Length; i++)
+            // stars
+            int stars = Stars(r.SaveFraction, r.UnlockSaveFraction);
+            float sx = x + w / 2f - 1.5f * 110f;
+            for (int i = 0; i < 3; i++)
             {
-                float cx = x + 40 + i * cellW;
-                float frac = r.ZoneShots[i] == 0 ? 0f : (float)r.ZoneSaves[i] / r.ZoneShots[i];
-                Ui.Fill(cx + 4, y + 388, cellW - 8, 90, Ui.PanelLight);
-                Ui.Fill(cx + 4, y + 388 + 90 * (1f - frac), cellW - 8, 90 * frac, new Color(Ui.Good.r, Ui.Good.g, Ui.Good.b, 0.45f));
-                Ui.Label(cx, y + 398, cellW, 40, $"{r.ZoneSaves[i]}/{r.ZoneShots[i]}", 30, Ui.Text, TextAnchor.UpperCenter, bold: true);
-                Ui.Label(cx, y + 440, cellW, 30, names[i], 20, Ui.Muted, TextAnchor.UpperCenter);
+                bool lit = i < stars;
+                float size = i == 1 ? 110f : 90f;
+                float yy = y + (i == 1 ? 74f : 92f);
+                Ui.Star(sx + i * 110f + (110f - size) / 2f, yy, size, lit ? Ui.Cue : new Color(1f, 1f, 1f, 0.12f));
             }
 
-            if (log != null)
-                Ui.Label(x + 40, y + 500, w - 80, 60, $"Logged to {log.ShotsPath}", 16, Ui.Muted);
+            Ui.Label(x, y + 196, w, 90, $"{r.Saves} / {r.Shots} SAVES", 80, Ui.Text, TextAnchor.UpperCenter, display: true);
+            Ui.Label(x, y + 280, w, 40,
+                r.Passed ? $"PASSED ({r.SaveFraction:P0}) · NEXT LEVEL UNLOCKED" : $"{r.SaveFraction:P0} · NEED {r.UnlockSaveFraction:P0} TO UNLOCK THE NEXT LEVEL",
+                28, r.Passed ? Ui.Good : Ui.Bad, TextAnchor.UpperCenter, display: true);
 
-            GUILayout.BeginArea(Ui.R(x + 40, y + h - 170, w - 80, 150));
+            // stat tiles
+            string rt = double.IsNaN(r.MeanReactionTime) ? "—" : $"{r.MeanReactionTime * 1000:0} ms";
+            Tile(x + 60, y + 340, 250, "SCORE", r.Score.ToString(), lastWasBest ? "NEW BEST!" : null);
+            Tile(x + 325, y + 340, 250, "BEST STREAK", r.BestStreak.ToString(), null);
+            Tile(x + 590, y + 340, 250, "MEAN REACTION", rt, null);
+
+            // per-zone saves
+            Ui.Label(x + 60, y + 480, w - 120, 30, "SAVES PER TARGET ZONE", 22, Ui.Muted, display: true);
+            string[] names = r.Zones == 3 ? new[] { "LEFT", "CENTRE", "RIGHT" } : new[] { "L2", "L1", "C", "R1", "R2" };
+            float cellW = (w - 120) / r.Zones;
+            for (int i = 0; i < r.Zones && i < r.ZoneShots.Length; i++)
+            {
+                float cx = x + 60 + i * cellW;
+                float frac = r.ZoneShots[i] == 0 ? 0f : (float)r.ZoneSaves[i] / r.ZoneShots[i];
+                Ui.RoundBox(cx + 4, y + 514, cellW - 8, 92, Ui.PanelLight);
+                if (frac > 0.05f) Ui.RoundBox(cx + 4, y + 514 + 92 * (1f - frac), cellW - 8, 92 * frac, new Color(Ui.Good.r, Ui.Good.g, Ui.Good.b, 0.5f));
+                Ui.Label(cx, y + 522, cellW, 44, $"{r.ZoneSaves[i]}/{r.ZoneShots[i]}", 40, Ui.Text, TextAnchor.UpperCenter, display: true);
+                Ui.Label(cx, y + 566, cellW, 30, names[i], 22, Ui.Muted, TextAnchor.UpperCenter, display: true);
+            }
+
+            GUILayout.BeginArea(Ui.R(x + 60, y + h - 190, w - 120, 180));
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Retry", Ui.ButtonStyle(24))) StartLevel(currentIndex);
+            if (GUILayout.Button("RETRY", Ui.ButtonStyle(30))) StartLevel(currentIndex);
             int next = currentIndex + 1;
-            GUI.enabled = next < levels.Length && IsUnlocked(next);
-            if (GUILayout.Button(next < levels.Length ? $"Next: {levels[next].settings.levelName}" : "Last level", Ui.ButtonStyle(24))) StartLevel(next);
+            bool canNext = next < levels.Length && IsUnlocked(next);
+            GUI.enabled = canNext;
+            if (GUILayout.Button(next < levels.Length ? $"NEXT: {levels[next].settings.levelId}" : "LAST LEVEL", Ui.ButtonStyle(30, primary: canNext))) StartLevel(next);
             GUI.enabled = true;
-            if (GUILayout.Button("Main menu", Ui.ButtonStyle(24))) ShowMenu();
+            if (GUILayout.Button("MENU", Ui.ButtonStyle(30))) ShowMenu();
             GUILayout.EndHorizontal();
             if (log != null)
             {
-                GUILayout.Space(Ui.S(8));
-                if (GUILayout.Button("Open log folder", Ui.ButtonStyle(18)))
+                GUILayout.Space(Ui.S(10));
+                GUILayout.BeginHorizontal();
+                GUILayout.Label($"Logged to {log.ShotsPath}", Ui.LabelStyle(16, Ui.Muted));
+                if (GUILayout.Button("OPEN FOLDER", Ui.ButtonStyle(18), GUILayout.Width(Ui.S(200))))
                     Application.OpenURL(new Uri(log.Folder).AbsoluteUri);
+                GUILayout.EndHorizontal();
             }
             GUILayout.EndArea();
+        }
+
+        static void Tile(float x, float y, float w, string label, string value, string badge)
+        {
+            Ui.RoundBox(x, y, w, 120, Ui.PanelLight);
+            Ui.Label(x + 20, y + 14, w - 40, 26, label, 22, Ui.Muted, display: true);
+            Ui.Label(x + 20, y + 40, w - 40, 70, value, 60, Ui.Text, display: true);
+            if (badge != null)
+            {
+                Ui.RoundBox(x + w - 130, y + 12, 118, 32, Ui.Accent);
+                Ui.Label(x + w - 130, y + 14, 118, 32, badge, 22, Color.black, TextAnchor.UpperCenter, display: true);
+            }
         }
     }
 }
