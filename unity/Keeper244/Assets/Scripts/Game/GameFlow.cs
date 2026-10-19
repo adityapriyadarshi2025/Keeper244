@@ -12,8 +12,8 @@ namespace Keeper244.Game
     /// stars), a short intro card before each level, pause, results, unlock progression
     /// (pass a level at ≥ its unlock fraction to open the next) and logging.
     ///
-    /// Keys while playing: Esc = pause, R = restart level, C = switch camera, F1 = debug panel.
-    /// The camera choice (behind the goal / front) is remembered between runs.
+    /// Keys while playing: Esc = pause, R = restart level, C = switch camera, H = assist on/off,
+    /// F1 = debug panel. The camera (behind the goal / front) and assist choices are remembered.
     /// </summary>
     public sealed class GameFlow : MonoBehaviour
     {
@@ -41,6 +41,7 @@ namespace Keeper244.Game
         const string PrefUnlockedPrefix = "k244.unlocked.";
         const string PrefBestPrefix = "k244.best.";
         const string PrefCamera = "k244.camera";
+        const string PrefAssist = "k244.assist";
 
         ScreenId screen = ScreenId.Menu;
         string participant = "P01";
@@ -93,6 +94,7 @@ namespace Keeper244.Game
         void Start()
         {
             game.SetInput(Input);
+            game.Assist = PlayerPrefs.GetInt(PrefAssist, 1) == 1;
             if (cameraDirector != null)
             {
                 var saved = PlayerPrefs.GetInt(PrefCamera, 0) == 1 ? CameraDirector.View.Front : CameraDirector.View.BehindGoal;
@@ -126,6 +128,13 @@ namespace Keeper244.Game
             if (cameraDirector != null) cameraDirector.ToggleView();
         }
 
+        /// <summary>Assist: show where the ball is going (call-out, ground marker, strip outline).</summary>
+        public void SetAssist(bool on)
+        {
+            game.Assist = on;
+            PlayerPrefs.SetInt(PrefAssist, on ? 1 : 0);
+        }
+
         void OnDestroy()
         {
             Time.timeScale = 1f;
@@ -147,6 +156,7 @@ namespace Keeper244.Game
             if (screen == ScreenId.Playing && kb.rKey.wasPressedThisFrame) StartLevel(currentIndex);
             // not on the menu: the participant ID field may be taking typed letters
             if (screen != ScreenId.Menu && kb.cKey.wasPressedThisFrame) ToggleCamera();
+            if (screen != ScreenId.Menu && kb.hKey.wasPressedThisFrame) SetAssist(!game.Assist);
         }
 
         // ---------------- actions ----------------
@@ -219,7 +229,8 @@ namespace Keeper244.Game
         void OnShotResolved(ShotResult r)
         {
             var level = CurrentLevel;
-            log?.WriteShot(r, participant, Input.SourceName, level != null ? level.settings.levelId : "", CameraDirector.Name(CameraView));
+            log?.WriteShot(r, participant, Input.SourceName, level != null ? level.settings.levelId : "",
+                           CameraDirector.Name(CameraView), game.AssistAtCue);
         }
 
         void OnLevelCompleted(LevelResult r)
@@ -272,10 +283,10 @@ namespace Keeper244.Game
                 Ui.RoundBox(bx, by, bw, 64, new Color(Ui.Bad.r, Ui.Bad.g, Ui.Bad.b, 0.92f));
                 Ui.Label(bx + 24, by + 14, bw - 48, 40, "SCENE OUT OF DATE · STOP PLAY, THEN KEEPER244 > BUILD MAIN SCENE > REBUILD", 26, Color.white, display: true);
             }
-            Ui.Label(lx + 8, Ui.RefHeight - 60, 900, 30, "ESC PAUSE · R RESTART · C CAMERA · F1 DEBUG · A/D NEAR · SHIFT FAR", 20, Ui.Muted, display: true);
+            Ui.Label(lx + 8, Ui.RefHeight - 60, 900, 30, "ESC PAUSE · R RESTART · C CAMERA · H ASSIST · F1 DEBUG · A/D NEAR · SHIFT FAR", 20, Ui.Muted, display: true);
 
             // ---- panel, right ----
-            float w = 640f, h = 860f;
+            float w = 640f, h = 900f;
             float x = Ui.Width - w - 80f, y = (Ui.RefHeight - h) / 2f;
             Ui.RoundBox(x, y, w, h, Ui.Panel);
 
@@ -298,7 +309,7 @@ namespace Keeper244.Game
             GUILayout.EndHorizontal();
 
             GUILayout.Space(Ui.S(14));
-            GUILayout.Label("CAMERA  (C IN GAME)", Ui.LabelStyle(22, Ui.Muted, TextAnchor.UpperLeft, display: true));
+            GUILayout.Label("VIEW  (C)", Ui.LabelStyle(22, Ui.Muted, TextAnchor.UpperLeft, display: true));
             GUILayout.BeginHorizontal();
             var view = CameraView;
             bool behind = GUILayout.Toggle(view == CameraDirector.View.BehindGoal, "  Behind the goal", Ui.ToggleStyle(24));
@@ -306,10 +317,13 @@ namespace Keeper244.Game
             GUILayout.EndHorizontal();
             if (behind && view != CameraDirector.View.BehindGoal) SetCamera(CameraDirector.View.BehindGoal);
             else if (front && view != CameraDirector.View.Front) SetCamera(CameraDirector.View.Front);
+            GUILayout.Space(Ui.S(4));
+            bool assist = GUILayout.Toggle(game.Assist, "  Assist: show where the ball is going  (H)", Ui.ToggleStyle(24));
+            if (assist != game.Assist) SetAssist(assist);
 
             GUILayout.Space(Ui.S(14));
             GUILayout.Label("CHOOSE A LEVEL", Ui.LabelStyle(22, Ui.Muted, TextAnchor.UpperLeft, display: true));
-            menuScroll = GUILayout.BeginScrollView(menuScroll, GUIStyle.none, GUIStyle.none, GUILayout.Height(Ui.S(416)));
+            menuScroll = GUILayout.BeginScrollView(menuScroll, GUIStyle.none, GUIStyle.none, GUILayout.Height(Ui.S(410)));
             for (int i = 0; i < levels.Length; i++)
             {
                 var lv = levels[i];
@@ -362,7 +376,7 @@ namespace Keeper244.Game
 
         void DrawPause()
         {
-            float w = 560f, h = 500f;
+            float w = 560f, h = 580f;
             float x = (Ui.Width - w) / 2f, y = (Ui.RefHeight - h) / 2f;
             Ui.Fill(0, 0, Ui.Width, Ui.RefHeight, new Color(0f, 0f, 0f, 0.5f));
             Ui.RoundBox(x, y, w, h, Ui.Panel);
@@ -375,6 +389,8 @@ namespace Keeper244.Game
             GUILayout.Space(Ui.S(12));
             string cameraLabel = Mirrored ? "CAMERA: FRONT  (C)" : "CAMERA: BEHIND GOAL  (C)";
             if (GUILayout.Button(cameraLabel, Ui.ButtonStyle(30))) ToggleCamera();
+            GUILayout.Space(Ui.S(12));
+            if (GUILayout.Button(game.Assist ? "ASSIST: ON  (H)" : "ASSIST: OFF  (H)", Ui.ButtonStyle(30))) SetAssist(!game.Assist);
             GUILayout.Space(Ui.S(12));
             if (GUILayout.Button("MAIN MENU", Ui.ButtonStyle(30))) ShowMenu();
             GUILayout.EndArea();

@@ -189,18 +189,21 @@ namespace Keeper244.Tests
         [Test]
         public void Csv_RowMatchesHeader()
         {
-            string row = ShotCsv.Row(SampleResult(), "P01", "Keyboard", "L2", "front");
+            string row = ShotCsv.Row(SampleResult(), "P01", "Keyboard", "L2", "front", assist: false);
             Assert.AreEqual(ShotCsv.Columns.Length, row.Split(',').Length);
-            Assert.AreEqual("P01,Keyboard,L2,5,3,-2,-2,-2,1,165,1,1.1,4.500,6.000,7.250,0.625,0,0,0,1.500,1,0.0200,0.5100,front", row);
+            Assert.AreEqual("P01,Keyboard,L2,5,3,-2,-2,-2,1,165,1,1.1,4.500,6.000,7.250,0.625,0,0,0,1.500,1,0.0200,0.5100,front,0", row);
         }
 
         [Test]
-        public void Csv_CameraIsTheLastColumn_EmptyWhenUnknown()
+        public void Csv_CameraAndAssistAreTheLastColumns_EmptyWhenUnknown()
         {
-            Assert.AreEqual("camera", ShotCsv.Columns[ShotCsv.Columns.Length - 1]);
+            int n = ShotCsv.Columns.Length;
+            Assert.AreEqual("camera", ShotCsv.Columns[n - 2]);
+            Assert.AreEqual("assist", ShotCsv.Columns[n - 1]);
             string row = ShotCsv.Row(SampleResult(), "P01", "Keyboard", "L2");
-            Assert.AreEqual(ShotCsv.Columns.Length, row.Split(',').Length);
-            StringAssert.EndsWith(",0.5100,", row);
+            Assert.AreEqual(n, row.Split(',').Length);
+            StringAssert.EndsWith(",0.5100,,", row);
+            StringAssert.EndsWith(",behind,1", ShotCsv.Row(SampleResult(), "P01", "Keyboard", "L2", "behind", assist: true));
         }
 
         [Test]

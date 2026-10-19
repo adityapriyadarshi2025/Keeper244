@@ -11,6 +11,9 @@ namespace Keeper244.Game
     ///  - bottom-left: activation bars, triceps left and biceps right, with θ_on and θ_far lines
     ///  - bottom-centre: slot strip (keeper filled, target outlined during CUE/FLIGHT)
     ///
+    /// With assist off (GameManager.Assist) the target is not shown: no direction call-out, no strip
+    /// outline until the shot is decided.
+    ///
     /// Everything left/right is drawn as it appears on SCREEN. In the front camera the keeper faces
     /// the player, so his right (biceps, positive slots) is on the left: the strip, the bars and the
     /// LEFT/RIGHT call-outs flip with it (GameFlow.Mirrored).
@@ -104,13 +107,21 @@ namespace Keeper244.Game
             Ui.RoundBox(x + 14, y + 16, 16, 16, ok ? Ui.Good : Ui.Bad);
             Ui.Label(x + 42, y + 10, w - 50, 30, ok ? $"{c.SourceName.ToUpperInvariant()} · SIGNAL OK" : "NO SIGNAL", 22, ok ? Ui.Text : Ui.Bad, display: true);
 
-            // camera chip: which view, and the key that switches it
+            // chips for the two toggles: which state, and the key that switches it
             if (flow == null) return;
             y += h + 10;
+            KeyChip(x, y, w, "C", flow.Mirrored ? "CAMERA · FRONT" : "CAMERA · BEHIND GOAL", Ui.Muted);
+            if (game.IsFreePlay) return;
+            y += 50;
+            KeyChip(x, y, w, "H", game.Assist ? "ASSIST · ON" : "ASSIST · OFF", game.Assist ? Ui.Muted : Ui.Accent);
+        }
+
+        static void KeyChip(float x, float y, float w, string key, string text, Color textColour)
+        {
             Ui.RoundBox(x, y, w, 40, Ui.PanelSoft);
             Ui.RoundBox(x + 10, y + 7, 26, 26, Ui.PanelLight);
-            Ui.Label(x + 10, y + 8, 26, 26, "C", 20, Ui.Text, TextAnchor.UpperCenter, display: true);
-            Ui.Label(x + 46, y + 8, w - 54, 26, flow.Mirrored ? "CAMERA · FRONT" : "CAMERA · BEHIND GOAL", 20, Ui.Muted, display: true);
+            Ui.Label(x + 10, y + 8, 26, 26, key, 20, Ui.Text, TextAnchor.UpperCenter, display: true);
+            Ui.Label(x + 46, y + 8, w - 54, 26, text, 20, textColour, display: true);
         }
 
         // ---------------- centre ----------------
@@ -136,12 +147,16 @@ namespace Keeper244.Game
                         col = Ui.Info;
                         break;
                     case RoundState.Cue:
-                        big = Direction(m.CurrentTarget, m.Settings.zones, Mirrored);
-                        small = "SHOT INCOMING";
+                        if (game.Assist)
+                        {
+                            big = Direction(m.CurrentTarget, m.Settings.zones, Mirrored);
+                            small = "SHOT INCOMING";
+                        }
+                        else small = "WATCH THE STRIKER";       // assist off: timing only, no direction
                         col = new Color(Ui.Cue.r, Ui.Cue.g, Ui.Cue.b, pulse);
                         break;
                     case RoundState.Flight:
-                        big = Direction(m.CurrentTarget, m.Settings.zones, Mirrored);
+                        if (game.Assist) big = Direction(m.CurrentTarget, m.Settings.zones, Mirrored);
                         col = Ui.Cue;
                         break;
                     case RoundState.Complete:
@@ -258,7 +273,9 @@ namespace Keeper244.Game
                 int slot = mirrored ? half - i : i - half; // cells are in screen order, names too
                 float cx = x0 + i * cell;
                 bool isKeeper = slot == keeper;
-                bool isTarget = m != null && m.HasActiveShot && slot == m.CurrentTarget;
+                // with assist off the target is only revealed afterwards, as feedback
+                bool isTarget = m != null && m.HasActiveShot && slot == m.CurrentTarget &&
+                                (game.Assist || m.State == RoundState.Feedback);
                 Color frame = Ui.Cue;
                 if (isTarget && m.State == RoundState.Feedback && game.LastShot != null)
                     frame = game.LastShot.Saved ? Ui.Good : Ui.Bad;

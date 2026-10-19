@@ -46,6 +46,32 @@ namespace Keeper244.Game
         /// <summary>Zones of the running level (5 in free play).</summary>
         public int Zones => level != null ? level.settings.zones : 5;
 
+        /// <summary>
+        /// Assist on: the target is shown during CUE and FLIGHT (glowing ground marker; the HUD adds
+        /// the call-out and strip outline). Off: the player only has the striker's run-up and the
+        /// ball; the marker still lights up green/red after the shot as feedback. Set by GameFlow.
+        /// </summary>
+        public bool Assist
+        {
+            get => assist;
+            set
+            {
+                if (assist == value) return;
+                assist = value;
+                // apply mid-shot too: show or hide the cue marker right away
+                if (machine != null && (machine.State == RoundState.Cue || machine.State == RoundState.Flight))
+                {
+                    if (assist) marker.Show(machine.CurrentTarget, machine.Settings.zones);
+                    else marker.Hide();
+                }
+            }
+        }
+
+        /// <summary>Assist state when the current/last shot's CUE started (what gets logged).</summary>
+        public bool AssistAtCue { get; private set; } = true;
+
+        bool assist = true;
+
         public event Action<LevelConfig> LevelStarted;
         /// <summary>(shotIndex, target zone slot)</summary>
         public event Action<int, int> CueStarted;
@@ -141,7 +167,8 @@ namespace Keeper244.Game
             float height = Mathf.Lerp(ballHeightRange.x, ballHeightRange.y, (float)visualRng.NextDouble());
             shotPoint = new Vector3(FieldGeometry.ZoneCentreX(target, zones) + jitter, height, keeper.transform.position.z);
 
-            marker.Show(target, zones);
+            AssistAtCue = assist;
+            if (assist) marker.Show(target, zones);
             striker.BeginRunUp(shotPoint, machine.Settings.cueSeconds);
             CueStarted?.Invoke(shotIndex, target);
         }
@@ -157,6 +184,7 @@ namespace Keeper244.Game
         {
             LastShot = r;
             ball.PlayOutcome(r.Saved);
+            if (!assist) marker.Show(r.Target, r.Zones); // feedback only: where it went, after the fact
             marker.ShowResult(r.Saved);
             if (r.Saved) keeper.Celebrate();
             Debug.Log($"[Keeper244] Shot {r.ShotIndex + 1}/{r.ShotCount}: target {r.Target:+0;-0;0}, keeper {r.KeeperZoneSlot:+0;-0;0} " +

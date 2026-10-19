@@ -19,13 +19,14 @@ namespace Keeper244.Core
             "cue_time", "kick_time", "arrival_time", "reaction_time",
             "wrong_direction", "overshoot", "undershoot", "time_in_target_before_arrival",
             "false_activations_in_wait_rest", "mean_a_b", "mean_a_t",
-            "camera",
+            "camera", "assist",
         };
 
         public static string Header => string.Join(",", Columns);
 
         /// <param name="camera">Play view when the ball arrived: "behind" or "front" (empty if unknown).</param>
-        public static string Row(ShotResult r, string participant, string input, string levelId, string camera = "")
+        /// <param name="assist">Whether the target was shown when the cue started (empty if unknown).</param>
+        public static string Row(ShotResult r, string participant, string input, string levelId, string camera = "", bool? assist = null)
         {
             var c = CultureInfo.InvariantCulture;
             var sb = new StringBuilder(256);
@@ -55,6 +56,7 @@ namespace Keeper244.Core
             Add(Num(r.MeanBiceps, "0.0000"));
             Add(Num(r.MeanTriceps, "0.0000"));
             Add(Escape(camera));
+            Add(assist.HasValue ? Bool(assist.Value) : "");
             return sb.ToString();
         }
 

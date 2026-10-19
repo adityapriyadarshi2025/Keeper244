@@ -14,6 +14,7 @@ Status as of 2026-10-19: the project is chosen and the game concept plus technic
 | 2026-10-19 | Build order changed to **game first**: phases P0–P9 in the build plan doc replace milestones M0–M7 (mapping in §9.1) |
 | 2026-10-19 | Unity version fixed to **Unity 6.3 LTS, pinned at 6000.3.26f1**; team platforms: Aditya on macOS, three teammates on Windows 11 (§5.1, §10, §11) |
 | 2026-10-19 | fs set to 2000 Hz, 16-bit, from the BioRadio spec sheet (250–16,000 Hz, 12/16/24-bit, 190 kbps); TA question on fs dropped |
+| 2026-10-20 | **Assist toggle** (user request): H / menu / pause turns the target cues off; `assist` column added to `shots.csv` (§3.7) |
 | 2026-10-19 | P2 look pass + **second camera** (user request): front TV view next to the behind-the-goal view, switched with C; home net hidden behind the goal; `camera` column added to `shots.csv` (§3.8) |
 | 2026-10-19 | P2: scoring, per-shot metrics and game logs implemented as in §3.6/§3.9; exact metric definitions and file layout in `docs/GAME_LOGS.md`. HUD and menus use Unity IMGUI (code-only, no assets); a world-space HUD is needed only if VR is confirmed |
 | 2026-10-19 | P1: UDP contract frozen (`docs/PROTOCOL.md`): every Python→Unity message gets a `type`, `emg` gains `rest`, new `calib`, `level_start`, `level_end`; `level` is an id string |
@@ -188,6 +189,7 @@ L1 gives 2.7 s, which is comfortable. L3 gives 1.7 s, which is tight once you ad
 
 - **Activation bars:** two vertical bars, triceps on the left and biceps on the right, matching the movement direction. Each has horizontal lines at θ_on and θ_far, so the player learns what "light" and "strong" feel like.
 - **Slot strip:** a 5-cell strip showing the current slot, with the ball's target highlighted during CUE.
+- **Assist toggle (H, menu, pause):** on by default. Off hides everything that tells the player where the ball is going (direction call-out, ground marker, strip outline) until the shot is decided; the player reads the striker and the ball instead. `shots.csv` records it per shot (`assist`); keep it fixed within an experiment block.
 - **Status:** score, shot n/N, level, streak.
 - **Signal indicator:** OK / NO SIGNAL (§4.7).
 - **Debug overlay:** latency (ms) and packet rate (Hz), toggled with F1.

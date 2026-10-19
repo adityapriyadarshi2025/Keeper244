@@ -83,9 +83,9 @@ namespace Keeper244.Game
             return log;
         }
 
-        public void WriteShot(ShotResult r, string participant, string input, string levelId, string camera)
+        public void WriteShot(ShotResult r, string participant, string input, string levelId, string camera, bool assist)
         {
-            shots.WriteLine(ShotCsv.Row(r, participant, input, levelId, camera));
+            shots.WriteLine(ShotCsv.Row(r, participant, input, levelId, camera, assist));
             shots.Flush(); // never lose a shot if the game is closed mid-level
         }
 

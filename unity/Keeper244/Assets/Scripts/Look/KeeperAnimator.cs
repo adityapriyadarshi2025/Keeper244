@@ -8,7 +8,7 @@ namespace Keeper244.Look
     /// Procedural keeper body language driven by where the keeper is:
     ///  centre  → crouched ready stance, gloves out, light bounce
     ///  near    → side-step, leaning, arms reaching to that side
-    ///  far     → full dive: body rolls towards the post, both arms stretched over the head
+    ///  far     → full dive: body rolls towards the post, both arms stretched overhead (clear of the head)
     /// plus a fist-pump after a save and a slump after a goal. Purely visual: the save/goal
     /// decision never looks at these poses.
     /// </summary>
@@ -108,8 +108,13 @@ namespace Keeper244.Look
         }
 
         /// <summary>
-        /// One arm. `outward` is −1 for the left arm, +1 for the right. The arm on the dive side
-        /// reaches out and up; the other arm sweeps over the head towards the same side.
+        /// One arm. `outward` is −1 for the left arm, +1 for the right. In a dive both arms end up
+        /// stretched overhead along the body, reaching towards the ball:
+        ///  - lead arm (dive side): out, then overhead, angled a little to its own side
+        ///  - trail arm: up past the shoulder to almost straight overhead. It never swings past
+        ///    vertical (more than 180°), or it would cut through the head.
+        /// "Forward" is x: −x swings a hanging arm forward, but once the arm is above the shoulder
+        /// +x does, so the x angle goes from −25° (low ready arms) to +22° (overhead, in front of the face).
         /// </summary>
         void ArmPose(Transform upper, Transform fore, float outward, float side, float reach, float dive, float dt)
         {
@@ -118,12 +123,12 @@ namespace Keeper244.Look
             if (side == 0f)
                 z = readyZ;
             else if (Mathf.Approximately(outward, side))
-                z = outward * Mathf.Lerp(38f + 40f * reach, 165f, dive);   // lead arm: out, then overhead
+                z = outward * Mathf.Lerp(38f + 40f * reach, 160f, dive);   // lead arm: out, then overhead
             else
-                z = outward * Mathf.Lerp(38f, 210f, Mathf.Max(dive, 0.25f * reach)); // trail arm sweeps up over the head
-            float forward = Mathf.Lerp(-25f, -5f, dive);
+                z = outward * Mathf.Lerp(38f, 175f, Mathf.Max(dive, 0.25f * reach)); // trail arm: up beside the head
+            float forward = Mathf.Lerp(-25f, 22f, dive);
             HumanoidRig.Pose(upper, new Vector3(forward, 0f, z), sharpness, dt);
-            HumanoidRig.Pose(fore, new Vector3(Mathf.Lerp(-45f, -5f, dive), 0f, 0f), sharpness, dt);
+            HumanoidRig.Pose(fore, new Vector3(Mathf.Lerp(-45f, -12f, dive), 0f, 0f), sharpness, dt);
         }
     }
 }
