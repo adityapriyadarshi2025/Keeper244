@@ -8,7 +8,11 @@ namespace Keeper244.Game
     /// <summary>
     /// Plays one level: reads the input every frame, moves the keeper, ticks the round state
     /// machine (Core) and turns its events into ball, striker and marker visuals. GameFlow decides
-    /// which level runs and when; HUD, audio and the logger listen to the events below.
+    /// which level runs and when; HUD, audio, the logger and the UDP event sender listen to the
+    /// events below.
+    ///
+    /// Signal loss (brief §4.7): while the input has no signal the keeper is held at centre, the
+    /// round does not tick (pauses), and a shot in CUE or FLIGHT is voided and replayed later.
     /// </summary>
     public sealed class GameManager : MonoBehaviour
     {
@@ -79,6 +83,17 @@ namespace Keeper244.Game
         public event Action<int, int> Kicked;
         public event Action<ShotResult> ShotResolved;
         public event Action<LevelResult> LevelCompleted;
+        /// <summary>(shotIndex, target zone slot) of a shot voided by signal loss.</summary>
+        public event Action<int, int> ShotVoided;
+        /// <summary>The keeper's slot changed because of EMG packet seq (for the slot_applied echo).</summary>
+        public event Action<long> SlotApplied;
+        /// <summary>true = signal lost during a level, false = back.</summary>
+        public event Action<bool> SignalLostChanged;
+
+        /// <summary>A level is running and its input has no signal: the round is paused.</summary>
+        public bool SignalLost { get; private set; }
+
+        int lastLiveSlot;
 
         public void SetInput(IInputProvider input) => controls = input;
 
@@ -94,6 +109,8 @@ namespace Keeper244.Game
             keeper.Command(0);
             keeper.SnapToCommand();
             Paused = false;
+            SignalLost = false;
+            lastLiveSlot = 0;
 
             if (!s.freePlay)
             {
@@ -103,6 +120,7 @@ namespace Keeper244.Game
                 machine.Kicked += OnKicked;
                 machine.ShotResolved += OnShotResolved;
                 machine.LevelCompleted += OnLevelCompleted;
+                machine.ShotVoided += OnShotVoided;
             }
 
             Debug.Log(s.freePlay
@@ -123,12 +141,14 @@ namespace Keeper244.Game
                 machine.Kicked -= OnKicked;
                 machine.ShotResolved -= OnShotResolved;
                 machine.LevelCompleted -= OnLevelCompleted;
+                machine.ShotVoided -= OnShotVoided;
                 machine = null;
             }
             level = null;
             LastShot = null;
             LastLevelResult = null;
             Paused = false;
+            SignalLost = false;
             ball.ResetToSpot();
             striker.ResetPose();
             marker.Hide();
@@ -140,16 +160,48 @@ namespace Keeper244.Game
         {
             if (controls == null) return;
 
-            // No signal → keeper back to centre (brief §4.7). Pausing/voiding the shot comes in P3.
-            bool live = level != null && controls.HasSignal;
+            bool running = level != null;
+            bool signal = controls.HasSignal;
+            bool finished = machine != null && machine.State == RoundState.Complete;
+            if (running && !finished) TrackSignal(signal); // nothing to pause on the results screen
+
+            // No signal → keeper back to centre and the round paused (brief §4.7)
+            bool live = running && signal;
             int slot = live ? controls.Slot : 0;
             keeper.Command(slot);
 
-            if (machine != null && !Paused)
+            if (live && slot != lastLiveSlot && controls.SlotSeq >= 0)
+                SlotApplied?.Invoke(controls.SlotSeq);
+            lastLiveSlot = slot;
+
+            if (machine != null && !Paused && live)
             {
-                var sample = new InputSample(slot, !live || controls.IsAtRest, controls.ActivationBiceps, controls.ActivationTriceps);
+                var sample = new InputSample(slot, controls.IsAtRest, controls.ActivationBiceps, controls.ActivationTriceps);
                 machine.Tick(Time.deltaTime, sample);
             }
+        }
+
+        void TrackSignal(bool signal)
+        {
+            if (!signal && !SignalLost)
+            {
+                SignalLost = true;
+                Debug.LogWarning($"[Keeper244] NO SIGNAL from {controls.SourceName}: round paused.");
+                machine?.VoidCurrentShot(); // a shot in play is voided, not scored
+                SignalLostChanged?.Invoke(true);
+            }
+            else if (signal && SignalLost)
+            {
+                SignalLost = false;
+                Debug.Log($"[Keeper244] {controls.SourceName} signal back: round resumes after the rest gate.");
+                SignalLostChanged?.Invoke(false);
+            }
+        }
+
+        void OnShotVoided(int shotIndex, int target)
+        {
+            Debug.Log($"[Keeper244] Shot {shotIndex + 1} voided (no signal); it will be replayed.");
+            ShotVoided?.Invoke(shotIndex, target); // listeners run before the pitch resets (WaitingForRest)
         }
 
         void OnWaitingForRest(int shotIndex)

@@ -12,6 +12,7 @@
     {"type": "event", "name": "kick", "shot": 3},
     {"type": "event", "name": "arrival", "shot": 3, "target": -2, "keeper_slot": -2, "saved": true},
     {"type": "event", "name": "level_end", "level": "L1", "shots": 9, "saves": 7},
+    {"type": "event", "name": "shot_void", "shot": 3, "reason": "no_signal"},
     {"type": "event", "name": "slot_applied", "seq": 10234},
     {"type": "cmd", "name": "mark", "label": "artifact_trial_cable_tug"}
   ]

@@ -42,6 +42,8 @@ Metrics are measured once per rendered frame (≈ 16 ms at 60 fps). P8 analysis 
 
 ## levels.csv
 
-`participant, input, level, zones, shots, saves, save_fraction, passed, score, best_streak, mean_reaction_time, ended_local`
+`participant, input, level, zones, shots, saves, save_fraction, passed, score, best_streak, mean_reaction_time, ended_local, voided`
 
 `passed` = `save_fraction` ≥ the level's unlock fraction (70 % by default), which unlocks the next level for that participant.
+
+`voided` = shots dropped because the signal was lost (NO SIGNAL, brief §4.7). A voided shot has no row in `shots.csv` and is not in `shots`: it was played again with the same target, so `shots` still equals the level's full set. Python also receives a `shot_void` event for each one.

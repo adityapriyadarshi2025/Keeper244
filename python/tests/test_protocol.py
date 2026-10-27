@@ -65,3 +65,17 @@ def test_invalid_messages_are_rejected(bad):
 def test_parse_rejects_non_json():
     with pytest.raises(p.ProtocolError):
         p.parse(b"not json")
+
+
+def test_optional_rtt_ms_is_checked_only_when_present():
+    base = p.emg(1, 0.0, 0.1, 0.0, 1, False)
+    assert "rtt_ms" not in base
+    assert p.validate(p.emg(1, 0.0, 0.1, 0.0, 1, False, rtt_ms=21.234))["rtt_ms"] == 21.23
+    with pytest.raises(p.ProtocolError, match="rtt_ms"):
+        p.validate({**base, "rtt_ms": "fast"})
+
+
+def test_event_builder_validates():
+    assert p.event("shot_void", shot=3, reason="no_signal") == {"type": "event", "name": "shot_void", "shot": 3, "reason": "no_signal"}
+    with pytest.raises(p.ProtocolError):
+        p.event("shot_void", shot=3)

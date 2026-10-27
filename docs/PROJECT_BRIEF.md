@@ -10,10 +10,12 @@ Status as of 2026-10-19: the project is chosen and the game concept plus technic
 
 | Date | Change |
 |---|---|
+| 2026-10-27 | **VR confirmed: the lab has an Oculus Rift S** (TA answer). PC-tethered, Windows only; the game's VR mode targets it through the Unity OpenXR plugin (§3.8, §5.1, §11) |
 | 2026-10-19 | Project renamed **MyoKeeper → Keeper244** (user decision). Repo, Unity project and docs use the new name |
 | 2026-10-19 | Build order changed to **game first**: phases P0–P9 in the build plan doc replace milestones M0–M7 (mapping in §9.1) |
 | 2026-10-19 | Unity version fixed to **Unity 6.3 LTS, pinned at 6000.3.26f1**; team platforms: Aditya on macOS, three teammates on Windows 11 (§5.1, §10, §11) |
 | 2026-10-19 | fs set to 2000 Hz, 16-bit, from the BioRadio spec sheet (250–16,000 Hz, 12/16/24-bit, 190 kbps); TA question on fs dropped |
+| 2026-10-20 | **P3 networking:** UDP receiver (`EmgReceiver`, seq gate, 250 ms NO SIGNAL), event sender, voided shots replayed (§4.7), `tools/fake_sender.py`, F1 link stats, Windows/macOS build menu. Contract extended, backward compatible: `shot_void` event, optional `rtt_ms` on `emg` (`docs/PROTOCOL.md`) |
 | 2026-10-20 | **Assist toggle** (user request): H / menu / pause turns the target cues off; `assist` column added to `shots.csv` (§3.7) |
 | 2026-10-19 | P2 look pass + **second camera** (user request): front TV view next to the behind-the-goal view, switched with C; home net hidden behind the goal; `camera` column added to `shots.csv` (§3.8) |
 | 2026-10-19 | P2: scoring, per-shot metrics and game logs implemented as in §3.6/§3.9; exact metric definitions and file layout in `docs/GAME_LOGS.md`. HUD and menus use Unity IMGUI (code-only, no assets); a world-space HUD is needed only if VR is confirmed |
@@ -199,9 +201,10 @@ L1 gives 2.7 s, which is comfortable. L3 gives 1.7 s, which is tight once you ad
 - **Desktop mode is required** for development and as a fallback. It has two fixed play cameras, switched with **C** (or in the menu / pause screen):
   - **Behind the goal** (default): behind and above the keeper, looking out at the striker, high enough that the crossbar sits below the striker and the ball on screen. The home net and its back bars are hidden in this view so they don't block the shot.
   - **Front**: TV view from behind the striker, looking at the keeper and the goal. The keeper faces the player, so his right (biceps) is on the left of the screen; the HUD and keyboard flip to match the screen, the EMG mapping does not. `shots.csv` records the view per shot.
-- **VR mode** applies only if the lab provides a headset **[OPEN]**. It uses OpenXR + the XR Interaction Toolkit.
+- **VR mode — headset confirmed (2026-10-27): Oculus Rift S.** 1280 × 1440 per eye, **80 Hz** (a 12.5 ms frame budget for both eyes), inside-out tracking (5 cameras), Touch controllers. Unity talks to it through the **Unity OpenXR plugin** with XR Plug-in Management; Meta's older Oculus XR plugin is deprecated.
+- **VR readiness (P3):** all camera control lives in one component, `CameraDirector` (menu orbit, the two play views, shake/punch). A VR rig would replace it with a fixed XR origin behind the goal, and the IMGUI HUD would move to a world-space canvas. Nothing else in the game touches the camera, so VR stays a contained change once the headset question is answered.
 - **Never move the VR camera with the keeper.** Sudden sideways camera motion the user didn't make causes motion sickness. Keep the VR camera fixed: either a third-person "coach view" behind the keeper, or first-person where only the keeper's gloves and avatar move across the goal.
-- Meta Quest Link runs on Windows PCs only (as far as I know; confirm for the lab's headset). Three teammates are on Windows 11, so VR work happens on their machines.
+- **The Rift S needs a Windows 10/11 PC** with **DisplayPort 1.2** (or Mini DisplayPort with the included adapter) and **USB 3.0**, GPU at least GTX 1050 Ti (GTX 1060 recommended). It runs through Meta's PC app (Meta Horizon Link, formerly the Oculus app), where the Rift S is a legacy headset: some app updates in Dec 2025 – Feb 2026 left Rift S users with a black screen, fixed by a clean reinstall. **It cannot run on macOS**, so VR is built on the Mac but tested on the lab PC or a VR-capable Windows laptop with DisplayPort.
 - **Art:** start with primitives (a capsule keeper, a sphere ball, a box goal). Swap in free Asset Store football assets and Mixamo animations later. Gameplay first.
 
 ### 3.9 Per-shot metrics (logged; used in §7)
@@ -402,7 +405,7 @@ The biggest levers are the envelope window and the dwell time. E3 measures the t
 
 ### 4.7 Failure handling
 
-- **Signal loss:** if Unity receives no packet for 250 ms, the keeper returns to centre and a NO SIGNAL banner shows. The round pauses; the shot is voided, not counted as a goal.
+- **Signal loss:** if Unity receives no packet for 250 ms, the keeper returns to centre and a NO SIGNAL banner shows. The round pauses; the shot is voided, not counted as a goal. The voided shot is replayed (same target) after the rest gate once the signal is back, so the level keeps its balanced target set; Unity sends a `shot_void` event and `levels.csv` counts them (`voided`).
 - **Sensor status:** Python sets `status` (ok / no_data / saturated / flatline) and sends it in every packet. Saturation = ADC at its limits; flatline = rest SD near 0 (lead off).
 - **Clamping:** activations are clipped to [0, 1.5]. Unity moves the keeper at a capped speed (adjacent slot in ~0.15 s), so there are no teleports.
 - **Packet order:** Unity drops packets whose `seq` is older than the last one it saw.
@@ -418,7 +421,7 @@ The biggest levers are the envelope window and the dwell time. E3 measures the t
 | Processing bridge | Python 3.11+, numpy, scipy, pyyaml; pyqtgraph for the live monitor **[PROPOSED]** | All DSP, calibration, decisions and logging |
 | Analysis | Jupyter, numpy, scipy, pandas, matplotlib **[PROPOSED]** | Offline notebooks (§7) |
 | Game | **Unity 6.3 LTS, pinned at 6000.3.26f1, Universal 3D (URP) template, C#, Input System package [DECIDED]** | 6.0 LTS support ends Oct 2026; 6.3 LTS is supported to Dec 2027. The patch is pinned in `ProjectSettings/ProjectVersion.txt`; everyone installs exactly that patch. Lab PCs only need the built `.exe`, not Unity. `UdpClient` on a background thread; `JsonUtility` for parsing |
-| VR (if a headset exists) | OpenXR plugin + XR Interaction Toolkit | Fixed camera (§3.8) |
+| VR (Oculus Rift S) | Unity OpenXR plugin + XR Plug-in Management (Oculus Touch profile); XR Interaction Toolkit only if controllers are used | Fixed camera (§3.8); Windows only |
 | Device access | **[UNVERIFIED]** Vendor pages mention LabVIEW and MATLAB drivers and an "open architecture". The course guide says "BioRadio software/SDK". The real route (vendor API? BioCapture streaming? LSL? MATLAB driver → UDP?) must be confirmed with the TA (§11) | Hidden behind `EMGSource`, so the rest of the system never depends on it |
 
 ### 5.2 `EMGSource` abstraction (build this first)
@@ -468,6 +471,7 @@ Unity derives the 3-zone slot as `sign(slot)`. `rest` = both channels below θ_o
 {"type": "event", "name": "kick",         "shot": 3}
 {"type": "event", "name": "arrival",      "shot": 3, "target": -2, "keeper_slot": -2, "saved": true}
 {"type": "event", "name": "level_end",    "level": "L1", "shots": 9, "saves": 7}
+{"type": "event", "name": "shot_void",    "shot": 3, "reason": "no_signal"}
 {"type": "event", "name": "slot_applied", "seq": 10234}
 {"type": "cmd",   "name": "mark",         "label": "artifact_trial_cable_tug"}
 ```
@@ -674,7 +678,7 @@ The detailed plan lives in the "Keeper244 — Build Plan & Phases" doc. The game
 
 ## 11. Open questions
 
-1. **VR headset [OPEN]:** does the lab provide one (which model)? Is a desktop 3D game acceptable if not? The rubric row says "VR Game Development".
+1. **VR headset — answered (2026-10-27):** the lab has an **Oculus Rift S** (§3.8).
 2. **BioRadio [OPEN]:** exact model, number of channels, max sample rate, resolution, battery. **How do we get live data into our own code** (vendor SDK and its language, BioCapture streaming/LSL, MATLAB/LabVIEW driver)? Which OS? How many units, what lab hours, and can it leave the lab?
 3. **Windows machine — answered:** three teammates are on Windows 11.
 4. **Unity / C# experience — answered:** the whole team has used Unity; AI-assisted game coding is allowed.

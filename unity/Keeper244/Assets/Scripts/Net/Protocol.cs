@@ -6,7 +6,7 @@ namespace Keeper244.Net
     /// <summary>
     /// The frozen UDP contract (docs/PROTOCOL.md, examples in protocol/udp_examples.json).
     /// Field names are lower-case on purpose: JsonUtility maps them 1:1 to the JSON keys.
-    /// The UDP receiver and sender that use these arrive in P3.
+    /// Used by EmgReceiver (port 5005) and EventSender (port 5006).
     /// </summary>
     public static class Protocol
     {
@@ -24,6 +24,8 @@ namespace Keeper244.Net
         public const string StatusNoData = "no_data";
         public const string StatusSaturated = "saturated";
         public const string StatusFlatline = "flatline";
+
+        public const string VoidNoSignal = "no_signal";
 
         /// <summary>Read only the "type" key, to decide which class to parse the message into.</summary>
         public static string PeekType(string json)
@@ -56,6 +58,16 @@ namespace Keeper244.Net
         public int slot;
         public bool rest;
         public string status = Protocol.StatusOk;
+    }
+
+    /// <summary>
+    /// Optional emg fields, parsed separately so EmgPacket keeps exactly the required keys.
+    /// rtt_ms: the bridge's latest round trip (emg sent → slot_applied back), for the F1 panel.
+    /// </summary>
+    [Serializable]
+    public sealed class EmgExtras
+    {
+        public float rtt_ms;
     }
 
     [Serializable]
@@ -119,6 +131,16 @@ namespace Keeper244.Net
         public string level;
         public int shots;
         public int saves;
+    }
+
+    /// <summary>A shot abandoned mid-play (signal lost); it is replayed. Added in P3.</summary>
+    [Serializable]
+    public sealed class ShotVoidEvent
+    {
+        public string type = Protocol.TypeEvent;
+        public string name = "shot_void";
+        public int shot;
+        public string reason = Protocol.VoidNoSignal;
     }
 
     [Serializable]

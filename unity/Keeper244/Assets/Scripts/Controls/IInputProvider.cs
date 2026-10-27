@@ -29,5 +29,11 @@ namespace Keeper244.Controls
 
         /// <summary>Calibration thresholds for the HUD lines (keyboard: placeholders; EMG: from the "calib" message).</summary>
         ChannelThresholds Thresholds { get; }
+
+        /// <summary>Sensor status from the bridge: "ok", "no_data", "saturated" or "flatline" (keyboard: "ok").</summary>
+        string Status { get; }
+
+        /// <summary>Seq of the EMG packet that set the current Slot, for the slot_applied echo (keyboard: -1).</summary>
+        long SlotSeq { get; }
     }
 }

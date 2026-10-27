@@ -38,6 +38,7 @@ namespace Keeper244.Look
             game.CueStarted += OnCue;
             game.Kicked += OnKick;
             game.ShotResolved += OnShot;
+            game.ShotVoided += OnVoided;
         }
 
         void OnDisable()
@@ -46,7 +47,11 @@ namespace Keeper244.Look
             game.CueStarted -= OnCue;
             game.Kicked -= OnKick;
             game.ShotResolved -= OnShot;
+            game.ShotVoided -= OnVoided;
         }
+
+        // the ball is about to jump back to the spot: stop the trail first so it draws no streak
+        void OnVoided(int shot, int target) => OnCue(shot, target);
 
         void OnCue(int shot, int target)
         {

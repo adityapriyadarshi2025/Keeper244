@@ -22,6 +22,10 @@ namespace Keeper244.Core
     /// Call Tick every frame with the frame time and the current input. Timer overshoot carries
     /// into the next state, so CUE + FLIGHT last exactly T_cue + T_flight on this clock regardless
     /// of frame rate. It also scores each shot (brief §3.6) and measures the §3.9 metrics.
+    ///
+    /// Signal loss (brief §4.7): the caller stops ticking (the round pauses) and calls
+    /// <see cref="VoidCurrentShot"/>. A shot in CUE or FLIGHT is then dropped without a result and
+    /// the same shot is played again after the rest gate, so the level keeps its balanced targets.
     /// </summary>
     public sealed class RoundStateMachine
     {
@@ -54,6 +58,8 @@ namespace Keeper244.Core
         /// <summary>Saves in a row so far (resets on a goal).</summary>
         public int Streak { get; private set; }
         public int BestStreak { get; private set; }
+        /// <summary>Shots abandoned because the signal dropped (each was replayed).</summary>
+        public int Voided { get; private set; }
         /// <summary>Seconds since Start on this machine's clock.</summary>
         public double Clock { get; private set; }
         public LevelSettings Settings => settings;
@@ -75,6 +81,8 @@ namespace Keeper244.Core
         /// <summary>(shotIndex of the shot about to be cued)</summary>
         public event Action<int> WaitingForRest;
         public event Action<LevelResult> LevelCompleted;
+        /// <summary>(shotIndex, targetZoneSlot) of a shot dropped by <see cref="VoidCurrentShot"/>.</summary>
+        public event Action<int, int> ShotVoided;
 
         public RoundStateMachine(LevelSettings settings, IList<int> targetSequence)
         {
@@ -105,9 +113,23 @@ namespace Keeper244.Core
             Score = 0;
             Streak = 0;
             BestStreak = 0;
+            Voided = 0;
             ShotIndex = 0;
             Clock = 0;
             EnterWaitRest();
+        }
+
+        /// <summary>
+        /// Abandon the shot in CUE or FLIGHT: no result, no score, streak untouched. The machine goes
+        /// back to WAIT_REST for the same shot index (same target). False if there was no shot in play.
+        /// </summary>
+        public bool VoidCurrentShot()
+        {
+            if (State != RoundState.Cue && State != RoundState.Flight) return false;
+            Voided++;
+            ShotVoided?.Invoke(ShotIndex, CurrentTarget);
+            EnterWaitRest();
+            return true;
         }
 
         /// <summary>Shorthand without activations (keeps older call sites and tests simple).</summary>
@@ -302,6 +324,7 @@ namespace Keeper244.Core
                 Saves = Saves,
                 Score = Score,
                 BestStreak = BestStreak,
+                Voided = Voided,
                 UnlockSaveFraction = settings.unlockSaveFraction,
                 MeanReactionTime = rtCount > 0 ? rtSum / rtCount : double.NaN,
                 ZoneShots = zoneShots,

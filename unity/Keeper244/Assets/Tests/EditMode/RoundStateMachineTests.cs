@@ -195,5 +195,87 @@ namespace Keeper244.Tests
             var m = RoundStateMachine.CreateBalanced(s);
             Assert.AreEqual(15, m.ShotCount);
         }
+
+        // ---------------- signal loss (brief §4.7) ----------------
+
+        [Test]
+        public void Void_DuringCue_DropsTheShotAndReplaysTheSameTarget()
+        {
+            var m = new RoundStateMachine(Settings(), new[] { 1, -1 });
+            var voided = new List<(int, int)>();
+            var resolved = new List<ShotResult>();
+            m.ShotVoided += (i, t) => voided.Add((i, t));
+            m.ShotResolved += resolved.Add;
+            m.Start();
+            Ticks(m, 4);                         // rest gate → CUE of shot 0 (target +1)
+            Assert.AreEqual(RoundState.Cue, m.State);
+            Ticks(m, 3, slot: 1, rest: false);
+
+            Assert.IsTrue(m.VoidCurrentShot());
+            Assert.AreEqual(RoundState.WaitRest, m.State);
+            Assert.AreEqual(0, m.ShotIndex, "same shot again");
+            Assert.AreEqual(1, m.CurrentTarget);
+            CollectionAssert.AreEqual(new[] { (0, 1) }, voided);
+            Assert.IsEmpty(resolved, "a voided shot has no result");
+            Assert.AreEqual(0, m.Score);
+            Assert.AreEqual(1, m.Voided);
+
+            Ticks(m, 4);                         // rest gate again → CUE of the replayed shot
+            Assert.AreEqual(RoundState.Cue, m.State);
+            Assert.AreEqual(1, m.CurrentTarget);
+        }
+
+        [Test]
+        public void Void_DuringFlight_DoesNotCountAsAGoal_OrBreakTheStreak()
+        {
+            var m = new RoundStateMachine(Settings(), new[] { 1, -1 });
+            m.Start();
+            // shot 0: saved
+            Ticks(m, 4);
+            Ticks(m, 12 + 10, slot: 1, rest: false);
+            Assert.AreEqual(RoundState.Feedback, m.State);
+            Assert.AreEqual(1, m.Streak);
+            Ticks(m, 12);                        // feedback 1.5 s → WAIT_REST of shot 1
+            Ticks(m, 4);
+            Ticks(m, 12 + 3, slot: -1, rest: false);
+            Assert.AreEqual(RoundState.Flight, m.State);
+
+            Assert.IsTrue(m.VoidCurrentShot());
+            Assert.AreEqual(1, m.Streak, "streak untouched");
+            Assert.AreEqual(1, m.Results.Count);
+            Assert.AreEqual(1, m.ShotIndex);
+        }
+
+        [Test]
+        public void Void_OutsideAShot_DoesNothing()
+        {
+            var m = new RoundStateMachine(Settings(), new[] { 1 });
+            Assert.IsFalse(m.VoidCurrentShot(), "idle");
+            m.Start();
+            Assert.IsFalse(m.VoidCurrentShot(), "waiting for rest");
+            Ticks(m, 4);
+            Ticks(m, 12 + 10, slot: 1, rest: false);
+            Assert.AreEqual(RoundState.Feedback, m.State);
+            Assert.IsFalse(m.VoidCurrentShot(), "result already decided");
+            Assert.AreEqual(0, m.Voided);
+        }
+
+        [Test]
+        public void Voided_IsReportedInTheLevelResult_AndEveryShotStillPlays()
+        {
+            var m = new RoundStateMachine(Settings(), new[] { 0 });
+            LevelResult done = null;
+            m.LevelCompleted += r => done = r;
+            m.Start();
+            Ticks(m, 4);
+            m.VoidCurrentShot();
+            Ticks(m, 4);
+            m.VoidCurrentShot();
+            Ticks(m, 4 + 12 + 10 + 12);          // replay: rest, cue, flight, feedback
+            Assert.IsNotNull(done);
+            Assert.AreEqual(1, done.Shots);
+            Assert.AreEqual(1, done.Saves);
+            Assert.AreEqual(2, done.Voided);
+        }
     }
 }

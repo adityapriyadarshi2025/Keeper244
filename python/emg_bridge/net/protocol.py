@@ -26,8 +26,16 @@ SCHEMA: dict[tuple[str, str | None], dict[str, str]] = {
     ("event", "kick"): {"shot": "int"},
     ("event", "arrival"): {"shot": "int", "target": "int", "keeper_slot": "int", "saved": "bool"},
     ("event", "level_end"): {"level": "str", "shots": "int", "saves": "int"},
+    ("event", "shot_void"): {"shot": "int", "reason": "str"},
     ("event", "slot_applied"): {"seq": "int"},
     ("cmd", "mark"): {"label": "str"},
+}
+
+
+# Optional fields: checked only when present. rtt_ms = the bridge's latest round trip
+# (emg sent -> slot_applied back), shown on Unity's F1 panel.
+OPTIONAL: dict[tuple[str, str | None], dict[str, str]] = {
+    ("emg", None): {"rtt_ms": "num"},
 }
 
 
@@ -62,6 +70,9 @@ def validate(msg: dict[str, Any]) -> dict[str, Any]:
             raise ProtocolError(f"{key}: missing field '{field}'")
         if not _is_kind(msg[field], kind):
             raise ProtocolError(f"{key}: field '{field}' must be {kind}, got {msg[field]!r}")
+    for field, kind in OPTIONAL.get(key, {}).items():
+        if field in msg and not _is_kind(msg[field], kind):
+            raise ProtocolError(f"{key}: optional field '{field}' must be {kind}, got {msg[field]!r}")
     if mtype == "emg":
         if msg["slot"] not in SLOT_RANGE:
             raise ProtocolError(f"emg: slot {msg['slot']} outside -2..2")
@@ -87,12 +98,21 @@ def encode(msg: dict[str, Any]) -> bytes:
     return json.dumps(validate(msg), separators=(",", ":")).encode("utf-8")
 
 
-def emg(seq: int, t: float, ab: float, at: float, slot: int, rest: bool, status: str = "ok") -> dict[str, Any]:
-    return {"type": "emg", "seq": int(seq), "t": float(t), "ab": float(ab), "at": float(at),
-            "slot": int(slot), "rest": bool(rest), "status": status}
+def emg(seq: int, t: float, ab: float, at: float, slot: int, rest: bool, status: str = "ok",
+        rtt_ms: float | None = None) -> dict[str, Any]:
+    msg = {"type": "emg", "seq": int(seq), "t": float(t), "ab": float(ab), "at": float(at),
+           "slot": int(slot), "rest": bool(rest), "status": status}
+    if rtt_ms is not None:
+        msg["rtt_ms"] = round(float(rtt_ms), 2)
+    return msg
 
 
 def calib(th_on: tuple[float, float], th_off: tuple[float, float], th_far: tuple[float, float]) -> dict[str, Any]:
     """Thresholds as (biceps, triceps)."""
     return {"type": "calib", "th_on": [float(v) for v in th_on], "th_off": [float(v) for v in th_off],
             "th_far": [float(v) for v in th_far]}
+
+
+def event(name: str, **fields: Any) -> dict[str, Any]:
+    """A Unity -> Python event (used by tests and fake_sender to play Unity's part)."""
+    return validate({"type": "event", "name": name, **fields})

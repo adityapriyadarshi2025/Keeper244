@@ -76,7 +76,7 @@ namespace Keeper244.Game
                 levels = new StreamWriter(Path.Combine(folder, "levels.csv"), false),
             };
             log.shots.WriteLine(ShotCsv.Header);
-            log.levels.WriteLine("participant,input,level,zones,shots,saves,save_fraction,passed,score,best_streak,mean_reaction_time,ended_local");
+            log.levels.WriteLine("participant,input,level,zones,shots,saves,save_fraction,passed,score,best_streak,mean_reaction_time,ended_local,voided");
             log.shots.Flush();
             log.levels.Flush();
             Debug.Log($"[Keeper244] Logging to {folder}");
@@ -95,7 +95,7 @@ namespace Keeper244.Game
             levels.WriteLine(string.Join(",",
                 participant, input, r.LevelId, r.Zones.ToString(C), r.Shots.ToString(C), r.Saves.ToString(C),
                 r.SaveFraction.ToString("0.000", C), r.Passed ? "1" : "0", r.Score.ToString(C), r.BestStreak.ToString(C),
-                rt, DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", C)));
+                rt, DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", C), r.Voided.ToString(C)));
             levels.Flush();
         }
 

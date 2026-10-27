@@ -20,7 +20,7 @@ BioRadio (2 ch sEMG) ─► Python bridge: band-pass → notch → RMS envelope 
 | P0 | Setup: repo, Unity 6.3 LTS project, Python env, TA questions | done (TA questions pending) |
 | P1 | Game core: scene, round loop, keyboard input, 3-zone L1 | done — playable on keyboard |
 | P2 | Game complete: L0–L3, HUD, scoring, menus, shot logging | done — plus look pass and two cameras (C to switch) |
-| P3 | Game networking: UDP in/out, NO SIGNAL, fake sender, Windows build | |
+| P3 | Game networking: UDP in/out, NO SIGNAL, fake sender, Windows build | in progress — code done; checking in Unity, then the Windows build on a lab PC |
 | P4 | Python bridge on the simulator | |
 | P5 | BioRadio bring-up + first dataset | |
 | P6 | Offline analysis; lock DSP parameters | |
@@ -33,7 +33,7 @@ BioRadio (2 ch sEMG) ─► Python bridge: band-pass → notch → RMS envelope 
 ```
 docs/          PROJECT_BRIEF.md (full design), SETUP.md, PROTOCOL.md (UDP contract), GAME_LOGS.md (shots.csv columns), source_docs/ (course files)
 protocol/      udp_examples.json: one example per UDP message, tested by Python and Unity
-python/        emg_bridge/ (DSP + decision + UDP), config.yaml, tests/, tools/, analysis/
+python/        emg_bridge/ (DSP + decision + UDP), config.yaml, tests/, tools/ (fake_sender.py), analysis/
 unity/         Keeper244/ (Unity 6.3 LTS project, created in P0)
 data/sessions/ recorded sessions (git-ignored; share via Drive)
 ```
@@ -51,6 +51,10 @@ pytest
 ```
 
 Unity: open `unity/Keeper244` in Unity Hub with **Unity 6000.3.26f1** (6.3 LTS). Install exactly this patch.
+
+## Play without electrodes
+
+Unity → Play → INPUT **EMG over UDP**, then in `python/`: `python tools/fake_sender.py` (keys) or `--mode auto`. Details: [docs/SETUP.md §G](docs/SETUP.md).
 
 ## Key rules
 

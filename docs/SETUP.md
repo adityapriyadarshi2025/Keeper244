@@ -97,6 +97,40 @@ git config --global merge.unityyamlmerge.driver "'C:/Program Files/Unity/Hub/Edi
 
 Without this, git falls back to a normal text merge, which is why we also keep the one-scene-owner rule (CONTRIBUTING.md).
 
+## G. Play with fake EMG (Phase 3)
+
+The game runs over the real UDP link (docs/PROTOCOL.md) before any electrodes or DSP exist. `tools/fake_sender.py` plays the bridge.
+
+1. Unity → Play → menu → **INPUT: EMG over UDP**. The line under it reads "Listening on port 5005…".
+2. In a terminal, in `python/` with the venv active:
+
+   ```bash
+   python tools/fake_sender.py               # keys: q a s d e = slot -2 … +2, space = relax, p = pause, o = stale packet, f = flatline, x = quit
+   python tools/fake_sender.py --mode auto   # a keeper that plays itself from the game's shot_cue events
+   ```
+
+   The menu line turns green ("Receiving on port 5005 · 100 Hz · ok · calibrated"). Pick a level.
+3. What to check (P3 "done when"):
+   - Same game as on the keyboard, L0–L3.
+   - Pause the sender (`p`, or Ctrl-C) during a shot → **NO SIGNAL** within 250 ms; the shot is voided (not a goal) and replayed after the rest gate.
+   - `o` sends a stale packet → the F1 panel's "out-of-order" count goes up and the keeper doesn't twitch.
+   - The terminal prints each game event, and the summary on exit says `invalid events: 0`.
+   - F1 shows packet rate (≈ 100 Hz), interval jitter, lost packets, and the round trip from `slot_applied`.
+   - `M` in the game sends a `mark` command (trial label) to Python.
+
+The game keeps running when the terminal has focus (it sets Run In Background on start).
+
+Hands-free soak test: `python tools/fake_sender.py --mode auto --miss 0.3 --dropout-at 30 --dropout-for 2 --shuffle-every 200`.
+
+## H. Windows build (lab PCs)
+
+Lab PCs run the built game; they don't need Unity.
+
+- **Keeper244 → Build Game → Windows (64-bit)**. Output: `unity/Keeper244/Builds/Windows/` (git-ignored). Copy or zip the **whole folder**, not just the `.exe`.
+- On a Mac this needs the **Windows Build Support (Mono)** module for 6000.3.26f1 (Hub → Installs → ⚙ → Add modules); the menu says so if it is missing. Teammates on Windows have it already.
+- On the lab PC: run `Keeper244.exe` and start the bridge (or `fake_sender.py`) on the same PC. The game listens on 127.0.0.1 only, so Windows Firewall does not prompt. Logs: `%USERPROFILE%\AppData\LocalLow\Team20\Keeper244\sessions`.
+- **Build Game → macOS** makes a Mac app the same way (demos).
+
 ## Phase 0 done when
 
 - [ ] All 4 members cloned the repo and ran `pytest` green.

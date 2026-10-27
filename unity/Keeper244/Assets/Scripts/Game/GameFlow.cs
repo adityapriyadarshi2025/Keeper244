@@ -2,6 +2,7 @@ using System;
 using Keeper244.Controls;
 using Keeper244.Core;
 using Keeper244.Look;
+using Keeper244.Net;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -12,8 +13,9 @@ namespace Keeper244.Game
     /// stars), a short intro card before each level, pause, results, unlock progression
     /// (pass a level at ≥ its unlock fraction to open the next) and logging.
     ///
+    /// Input: Keyboard, or EMG over UDP from the Python bridge / tools/fake_sender.py (P3).
     /// Keys while playing: Esc = pause, R = restart level, C = switch camera, H = assist on/off,
-    /// F1 = debug panel. The camera (behind the goal / front) and assist choices are remembered.
+    /// M = send a trial mark to Python, F1 = debug panel. Input, camera and assist are remembered.
     /// </summary>
     public sealed class GameFlow : MonoBehaviour
     {
@@ -21,6 +23,8 @@ namespace Keeper244.Game
 
         [SerializeField] GameManager game;
         [SerializeField] KeyboardInput keyboard;
+        [SerializeField] EmgReceiver emg;
+        [SerializeField] EventSender events;
         [SerializeField] CameraDirector cameraDirector;
         [Tooltip("In menu order: L0 Free Play, L1, L2, L3 …")]
         [SerializeField] LevelConfig[] levels = Array.Empty<LevelConfig>();
@@ -33,7 +37,7 @@ namespace Keeper244.Game
         [SerializeField] Font bodyFont;
 
         /// <summary>Bump in SceneBuilder-facing changes: the menu then asks for a scene rebuild.</summary>
-        public const int SceneVersionCurrent = 2;
+        public const int SceneVersionCurrent = 3; // 3 = P3: EmgReceiver + EventSender on the Game object
         [Tooltip("Written by Keeper244 → Build Main Scene. If it is not SceneVersionCurrent, the menu shows a rebuild banner.")]
         [SerializeField] int sceneVersion;
 
@@ -65,10 +69,21 @@ namespace Keeper244.Game
 
         CameraDirector.View CameraView => cameraDirector != null ? cameraDirector.Current : CameraDirector.View.BehindGoal;
 
-        IInputProvider Input => keyboard; // P3 adds EMG over UDP
+        const string PrefInput = "k244.input";
+        bool useEmg;
+        string toast;
+        float toastAt = -10f;
+
+        /// <summary>EMG over UDP is the selected input (else keyboard).</summary>
+        public bool UsingEmg => useEmg && emg != null;
+
+        IInputProvider Input => UsingEmg ? emg : (IInputProvider)keyboard;
 
         void Awake()
         {
+            // keep playing (and receiving UDP) when the bridge's window has focus
+            Application.runInBackground = true;
+            useEmg = PlayerPrefs.GetInt(PrefInput, 0) == 1;
             Ui.Display = displayFont;
             Ui.Body = bodyFont;
             participant = PlayerPrefs.GetString(PrefParticipant, "P01");
@@ -157,6 +172,39 @@ namespace Keeper244.Game
             // not on the menu: the participant ID field may be taking typed letters
             if (screen != ScreenId.Menu && kb.cKey.wasPressedThisFrame) ToggleCamera();
             if (screen != ScreenId.Menu && kb.hKey.wasPressedThisFrame) SetAssist(!game.Assist);
+            if (screen == ScreenId.Playing && kb.mKey.wasPressedThisFrame && events != null)
+            {
+                events.Mark(null);
+                Toast($"MARK {events.Marks} SENT TO PYTHON");
+            }
+        }
+
+        void Toast(string text)
+        {
+            toast = text;
+            toastAt = Time.unscaledTime;
+        }
+
+        /// <summary>Choose the control source (menu only; a running level keeps its input).</summary>
+        public void SetEmgInput(bool on)
+        {
+            useEmg = on && emg != null;
+            PlayerPrefs.SetInt(PrefInput, useEmg ? 1 : 0);
+            game.SetInput(Input);
+        }
+
+        string EmgStatusLine(out Color colour)
+        {
+            colour = Ui.Muted;
+            if (emg == null) { colour = Ui.Bad; return "EMG receiver missing: rebuild the scene"; }
+            if (!emg.IsListening) { colour = Ui.Bad; return emg.ListenError ?? $"Not listening on port {emg.Port}"; }
+            if (emg.HasSignal)
+            {
+                colour = emg.Status == Protocol.StatusOk ? Ui.Good : Ui.Accent;
+                return $"Receiving on port {emg.Port} · {emg.PacketRate:0} Hz · {emg.Status}" + (emg.Calibrated ? " · calibrated" : "");
+            }
+            if (emg.Link.Accepted > 0) return $"No packets for {emg.PacketAgeSeconds:0.0} s on port {emg.Port}";
+            return $"Listening on port {emg.Port}: start the bridge or python tools/fake_sender.py";
         }
 
         // ---------------- actions ----------------
@@ -261,6 +309,8 @@ namespace Keeper244.Game
                 case ScreenId.Paused: DrawPause(); break;
                 case ScreenId.Results: DrawResults(); break;
             }
+            if (toast != null && Time.unscaledTime - toastAt < 1.5f)
+                Ui.ShadowLabel(0, Ui.RefHeight - 190, Ui.Width, 40, toast, 30, Ui.Info);
         }
 
         void DrawMenu()
@@ -283,7 +333,7 @@ namespace Keeper244.Game
                 Ui.RoundBox(bx, by, bw, 64, new Color(Ui.Bad.r, Ui.Bad.g, Ui.Bad.b, 0.92f));
                 Ui.Label(bx + 24, by + 14, bw - 48, 40, "SCENE OUT OF DATE · STOP PLAY, THEN KEEPER244 > BUILD MAIN SCENE > REBUILD", 26, Color.white, display: true);
             }
-            Ui.Label(lx + 8, Ui.RefHeight - 60, 900, 30, "ESC PAUSE · R RESTART · C CAMERA · H ASSIST · F1 DEBUG · A/D NEAR · SHIFT FAR", 20, Ui.Muted, display: true);
+            Ui.Label(lx + 8, Ui.RefHeight - 60, 900, 30, "ESC PAUSE · R RESTART · C CAMERA · H ASSIST · M MARK · F1 DEBUG · A/D NEAR · SHIFT FAR", 20, Ui.Muted, display: true);
 
             // ---- panel, right ----
             float w = 640f, h = 900f;
@@ -302,11 +352,13 @@ namespace Keeper244.Game
             GUILayout.Space(Ui.S(14));
             GUILayout.Label("INPUT", Ui.LabelStyle(22, Ui.Muted, TextAnchor.UpperLeft, display: true));
             GUILayout.BeginHorizontal();
-            GUILayout.Toggle(true, "  Keyboard", Ui.ToggleStyle(24));
-            GUI.enabled = false;
-            GUILayout.Toggle(false, "  EMG (Phase 3)", Ui.ToggleStyle(24));
-            GUI.enabled = true;
+            bool pickKeyboard = GUILayout.Toggle(!UsingEmg, "  Keyboard", Ui.ToggleStyle(24));
+            bool pickEmg = GUILayout.Toggle(UsingEmg, "  EMG over UDP", Ui.ToggleStyle(24));
             GUILayout.EndHorizontal();
+            if (pickKeyboard && UsingEmg) SetEmgInput(false);
+            else if (pickEmg && !UsingEmg) SetEmgInput(true);
+            string emgLine = EmgStatusLine(out var emgColour);
+            GUILayout.Label(emgLine, Ui.LabelStyle(18, UsingEmg ? emgColour : Ui.Muted));
 
             GUILayout.Space(Ui.S(14));
             GUILayout.Label("VIEW  (C)", Ui.LabelStyle(22, Ui.Muted, TextAnchor.UpperLeft, display: true));
@@ -422,7 +474,8 @@ namespace Keeper244.Game
 
             Ui.Label(x, y + 196, w, 90, $"{r.Saves} / {r.Shots} SAVES", 80, Ui.Text, TextAnchor.UpperCenter, display: true);
             Ui.Label(x, y + 280, w, 40,
-                r.Passed ? $"PASSED ({r.SaveFraction:P0}) · NEXT LEVEL UNLOCKED" : $"{r.SaveFraction:P0} · NEED {r.UnlockSaveFraction:P0} TO UNLOCK THE NEXT LEVEL",
+                (r.Passed ? $"PASSED ({r.SaveFraction:P0}) · NEXT LEVEL UNLOCKED" : $"{r.SaveFraction:P0} · NEED {r.UnlockSaveFraction:P0} TO UNLOCK THE NEXT LEVEL") +
+                (r.Voided > 0 ? $" · {r.Voided} VOIDED (NO SIGNAL)" : ""),
                 28, r.Passed ? Ui.Good : Ui.Bad, TextAnchor.UpperCenter, display: true);
 
             // stat tiles

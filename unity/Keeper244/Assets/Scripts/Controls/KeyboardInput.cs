@@ -48,6 +48,8 @@ namespace Keeper244.Controls
         public bool HasSignal => Keyboard.current != null;
         public string SourceName => "Keyboard";
         public ChannelThresholds Thresholds => ChannelThresholds.Placeholder;
+        public string Status => "ok";
+        public long SlotSeq => -1;
 
         /// <summary>Keys follow the screen when the keeper faces the camera (set by GameFlow).</summary>
         public bool MirrorLeftRight { get; set; }

@@ -45,8 +45,10 @@ namespace Keeper244.EditorTools
                 m.shader = shader;
             }
 
+            // URP keeps a legacy _Color copy of _BaseColor and re-derives it itself (with float
+            // rounding); writing it here too made every rebuild show material diffs in git.
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", color);
-            if (m.HasProperty("_Color")) m.SetColor("_Color", color);
+            else if (m.HasProperty("_Color")) m.SetColor("_Color", color);
             if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", smoothness);
             if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", metallic);
 

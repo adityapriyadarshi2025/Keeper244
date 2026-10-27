@@ -58,6 +58,8 @@ namespace Keeper244.Core
         public int Saves;
         public int Score;
         public int BestStreak;
+        /// <summary>Shots voided by signal loss and replayed (not in Shots).</summary>
+        public int Voided;
         public float UnlockSaveFraction;
         /// <summary>Mean over shots that have a reaction time. NaN if none.</summary>
         public double MeanReactionTime = double.NaN;

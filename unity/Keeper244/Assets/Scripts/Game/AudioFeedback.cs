@@ -59,6 +59,7 @@ namespace Keeper244.Game
             game.Kicked += OnKick;
             game.ShotResolved += OnResolved;
             game.LevelCompleted += OnComplete;
+            game.ShotVoided += OnVoided;
         }
 
         void OnDisable()
@@ -69,9 +70,11 @@ namespace Keeper244.Game
             game.Kicked -= OnKick;
             game.ShotResolved -= OnResolved;
             game.LevelCompleted -= OnComplete;
+            game.ShotVoided -= OnVoided;
         }
 
         void OnLevelStarted(LevelConfig level) => Play(whistle, 0.8f);
+        void OnVoided(int shot, int target) => Play(whistle, 0.6f); // referee stops play
         void OnCue(int shot, int target) => Play(cue);
         void OnKick(int shot, int target) => Play(kick);
 

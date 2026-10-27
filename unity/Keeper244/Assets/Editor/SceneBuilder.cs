@@ -4,6 +4,7 @@ using Keeper244.Controls;
 using Keeper244.Core;
 using Keeper244.Game;
 using Keeper244.Look;
+using Keeper244.Net;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -240,7 +241,9 @@ namespace Keeper244.EditorTools
             // ---------------- game logic ----------------
             var gameGo = new GameObject("Game");
             var input = gameGo.AddComponent<KeyboardInput>();
+            var emgIn = gameGo.AddComponent<EmgReceiver>();       // UDP 5005 ← Python bridge
             var gm = gameGo.AddComponent<GameManager>();
+            var udpEvents = gameGo.AddComponent<EventSender>();   // UDP 5006 → Python bridge
             var flow = gameGo.AddComponent<GameFlow>();
             var hud = gameGo.AddComponent<HudOverlay>();
             var debugPanel = gameGo.AddComponent<DebugStatusOverlay>();
@@ -253,7 +256,8 @@ namespace Keeper244.EditorTools
             Wire(keeperAnim, ("rig", keeperRig), ("keeper", keeper), ("game", gm));
             Wire(strikerAnim, ("rig", strikerRig), ("striker", striker));
             Wire(hud, ("game", gm), ("flow", flow));
-            Wire(debugPanel, ("game", gm));
+            Wire(debugPanel, ("game", gm), ("emg", emgIn), ("events", udpEvents));
+            Wire(udpEvents, ("game", gm));
             Wire(sfx, ("game", gm));
             Wire(effects, ("game", gm), ("cameraDirector", director), ("ballTrail", trail), ("kickDust", dust),
                  ("saveBurst", confetti), ("saveSparks", sparks), ("homeNet", homeNet));
@@ -275,6 +279,8 @@ namespace Keeper244.EditorTools
             var soFlow = new SerializedObject(flow);
             soFlow.FindProperty("game").objectReferenceValue = gm;
             soFlow.FindProperty("keyboard").objectReferenceValue = input;
+            soFlow.FindProperty("emg").objectReferenceValue = emgIn;
+            soFlow.FindProperty("events").objectReferenceValue = udpEvents;
             soFlow.FindProperty("cameraDirector").objectReferenceValue = director;
             // bump GameFlow.SceneVersionCurrent whenever this builder wires something new
             soFlow.FindProperty("sceneVersion").intValue = GameFlow.SceneVersionCurrent;

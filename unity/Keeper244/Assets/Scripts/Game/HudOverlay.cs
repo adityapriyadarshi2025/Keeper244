@@ -28,19 +28,26 @@ namespace Keeper244.Game
 
         ShotResult popup;
         float popupStart = -10f;
+        float voidedAt = -100f;
         float shownBiceps, shownTriceps;
 
         bool Mirrored => flow != null && flow.Mirrored;
 
         void OnEnable()
         {
-            if (game != null) game.ShotResolved += OnShot;
+            if (game == null) return;
+            game.ShotResolved += OnShot;
+            game.ShotVoided += OnVoided;
         }
 
         void OnDisable()
         {
-            if (game != null) game.ShotResolved -= OnShot;
+            if (game == null) return;
+            game.ShotResolved -= OnShot;
+            game.ShotVoided -= OnVoided;
         }
+
+        void OnVoided(int shot, int target) => voidedAt = Time.unscaledTime;
 
         void OnShot(ShotResult r)
         {
@@ -57,10 +64,26 @@ namespace Keeper244.Game
             Ui.TopShade(220f);
             DrawScoreboard();
             DrawSignal();
-            DrawCallout();
+            if (game.SignalLost) DrawNoSignal();
+            else DrawCallout();
             DrawBars();
             DrawSlotStrip();
             DrawPopup();
+        }
+
+        /// <summary>Brief §4.7: big banner while the input is silent; the round is paused.</summary>
+        void DrawNoSignal()
+        {
+            float pulse = 0.75f + 0.25f * Mathf.Sin(Time.unscaledTime * 5f);
+            float w = 1000f, h = 210f, x = (Ui.Width - w) / 2f, y = 140f;
+            Ui.RoundBox(x, y, w, h, new Color(0.12f, 0.02f, 0.03f, 0.88f));
+            Ui.RoundBox(x, y, w, 10, new Color(Ui.Bad.r, Ui.Bad.g, Ui.Bad.b, pulse));
+            Ui.ShadowLabel(x, y + 22, w, 100, "NO SIGNAL", 92, new Color(Ui.Bad.r, Ui.Bad.g, Ui.Bad.b, pulse));
+            bool voided = Time.unscaledTime - voidedAt < 6f;
+            string port = game.Controls != null && game.Controls.SourceName == "EMG" ? " ON PORT 5005" : "";
+            string line = voided ? "SHOT VOIDED · IT WILL BE REPLAYED" : "ROUND PAUSED";
+            Ui.ShadowLabel(x, y + 120, w, 40, line, 32, Ui.Text);
+            Ui.ShadowLabel(x, y + 160, w, 30, $"WAITING FOR THE EMG BRIDGE{port} · KEEPER HELD AT CENTRE", 22, Ui.Muted);
         }
 
         // ---------------- top ----------------
@@ -102,10 +125,15 @@ namespace Keeper244.Game
         {
             var c = game.Controls;
             bool ok = c != null && c.HasSignal;
+            // the bridge flags sensor trouble (saturated / flatline / no_data) without losing the link
+            bool warn = ok && !string.IsNullOrEmpty(c.Status) && c.Status != "ok";
+            string text = !ok ? "NO SIGNAL"
+                : warn ? $"{c.SourceName.ToUpperInvariant()} · {c.Status.ToUpperInvariant().Replace('_', ' ')}"
+                : $"{c.SourceName.ToUpperInvariant()} · SIGNAL OK";
             float x = 24, y = 30, w = 250, h = 48;
             Ui.RoundBox(x, y, w, h, Ui.PanelSoft);
-            Ui.RoundBox(x + 14, y + 16, 16, 16, ok ? Ui.Good : Ui.Bad);
-            Ui.Label(x + 42, y + 10, w - 50, 30, ok ? $"{c.SourceName.ToUpperInvariant()} · SIGNAL OK" : "NO SIGNAL", 22, ok ? Ui.Text : Ui.Bad, display: true);
+            Ui.RoundBox(x + 14, y + 16, 16, 16, !ok ? Ui.Bad : warn ? Ui.Accent : Ui.Good);
+            Ui.Label(x + 42, y + 10, w - 50, 30, text, 22, !ok ? Ui.Bad : warn ? Ui.Accent : Ui.Text, display: true);
 
             // chips for the two toggles: which state, and the key that switches it
             if (flow == null) return;

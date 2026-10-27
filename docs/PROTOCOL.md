@@ -1,4 +1,4 @@
-# UDP contract (frozen in P1)
+# UDP contract (frozen in P1, extended in P3)
 
 Python bridge ⇄ Unity game, over localhost UDP, one JSON object per datagram (UTF-8, no newline needed).
 **Python decides the keeper's slot; Unity only renders it.**
@@ -32,6 +32,9 @@ Every message has a `type`. Receivers ignore unknown `type`s and unknown fields 
 | `slot` | int | Decided keeper slot at 5-zone resolution, in {−2, −1, 0, +1, +2}. +1/+2 = right (biceps), −1/−2 = left (triceps). 3-zone levels use `sign(slot)` |
 | `rest` | bool | Both channels below their θ_off. Drives Unity's rest gate (WAIT_REST needs `rest` true for ≥ 0.5 s) |
 | `status` | string | `ok`, `no_data`, `saturated`, `flatline` (brief §4.7) |
+| `rtt_ms` | float, **optional** | The bridge's most recent round trip, ms: an earlier packet sent → Unity's `slot_applied` echo for it. Unity shows it on the F1 panel. Omitted until the first echo |
+
+**How Unity treats `emg`** (`EmgReceiver`, `SignalLink`): a packet counts only if its `seq` is newer than the last accepted one; late or repeated packets are dropped and counted. If `seq` goes back after ≥ 250 ms of silence (or jumps back by ≥ 1000), Unity takes it as a restarted sender and starts over. Gaps in `seq` are counted as lost packets (F1 panel).
 
 ### `calib` — sent after calibration, and again every 1 s
 
@@ -53,6 +56,7 @@ Python timestamps every message on arrival, so raw EMG and game events share **o
 | `kick` | `shot` | Striker kicks; FLIGHT starts |
 | `arrival` | `shot`, `target`, `keeper_slot`, `saved` | Ball arrives; result decided |
 | `level_end` | `level`, `shots`, `saves` | Level complete |
+| `shot_void` | `shot`, `reason` (`"no_signal"`) | The shot in play was dropped because the signal was lost (brief §4.7). It is played again later with the same `shot` number, so a `shot_cue` for that number follows. Added in P3 |
 | `slot_applied` | `seq` | Keeper moved because of packet `seq` (latency, experiment E8) |
 
 All of the above have `"type": "event"`. One command:
@@ -60,6 +64,12 @@ All of the above have `"type": "event"`. One command:
 | `type` / `name` | Extra fields | When |
 |---|---|---|
 | `cmd` / `mark` | `label` | Operator labels a trial (e.g. artifact trials, brief §6) |
+
+## P3 additions (backward compatible)
+
+- New event `shot_void` (Unity → Python).
+- Optional `rtt_ms` on `emg` (Python → Unity). `EmgPacket` in Unity keeps only the required keys; `rtt_ms` is read separately.
+- `python/emg_bridge/net/udp_out.py` (`EmgSender`, `RoundTrip`) and `udp_in.py` (`EventReceiver`) implement the Python side; `tools/fake_sender.py` uses them, and so will the P4 bridge.
 
 ## Changes from the brief's first draft (§5.3)
 

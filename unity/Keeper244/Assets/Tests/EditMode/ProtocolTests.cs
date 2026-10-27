@@ -57,6 +57,7 @@ namespace Keeper244.Tests
                 case "arrival": return JsonUtility.FromJson<ArrivalEvent>(json);
                 case "level_end": return JsonUtility.FromJson<LevelEndEvent>(json);
                 case "slot_applied": return JsonUtility.FromJson<SlotAppliedEvent>(json);
+                case "shot_void": return JsonUtility.FromJson<ShotVoidEvent>(json);
             }
             throw new ArgumentException("unknown message: " + json);
         }
@@ -68,7 +69,7 @@ namespace Keeper244.Tests
         public void ExamplesFileHasEveryMessageKind()
         {
             var msgs = ExampleMessages();
-            Assert.AreEqual(11, msgs.Count, "update this test when the contract gains a message");
+            Assert.AreEqual(12, msgs.Count, "update this test when the contract gains a message");
         }
 
         [Test]
@@ -113,6 +114,23 @@ namespace Keeper244.Tests
             Assert.IsNull(Protocol.PeekType(null));
             Assert.IsNull(Protocol.PeekType(""));
             Assert.IsNull(Protocol.PeekType("not json"));
+        }
+
+        [Test]
+        public void ShotVoidExample_Values()
+        {
+            string json = ExampleMessages().First(l => l.Contains("\"shot_void\""));
+            var e = JsonUtility.FromJson<ShotVoidEvent>(json);
+            Assert.AreEqual(3, e.shot);
+            Assert.AreEqual(Protocol.VoidNoSignal, e.reason);
+        }
+
+        [Test]
+        public void OptionalRoundTrip_IsReadFromAnEmgPacket()
+        {
+            const string json = "{\"type\": \"emg\", \"seq\": 5, \"t\": 1.0, \"ab\": 0.1, \"at\": 0.0, \"slot\": 1, \"rest\": false, \"status\": \"ok\", \"rtt_ms\": 23.5}";
+            Assert.AreEqual(23.5f, JsonUtility.FromJson<EmgExtras>(json).rtt_ms, 1e-4f);
+            Assert.AreEqual(5L, JsonUtility.FromJson<EmgPacket>(json).seq, "extra fields don't disturb the packet");
         }
 
         [Test]
