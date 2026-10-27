@@ -33,7 +33,7 @@ data/sessions/<YYYYMMDD_HHMMSS>_<participant>_unity/
 | `time_in_target_before_arrival` | Continuous time in the target slot ending at arrival (0 if not in it at arrival) |
 | `false_activations_in_wait_rest` | Times the player left rest while the game waited for the rest gate before this shot |
 | `mean_a_b`, `mean_a_t` | Mean normalised biceps / triceps activation over that final hold. Empty if the target was not held at arrival |
-| `camera` | Play view when the ball arrived: `behind` (behind the goal, the keeper's own view) or `front` (TV view from behind the striker). Added after the first P2 logs; older files don't have it. Compare reaction times only within one view |
+| `camera` | Play view when the ball arrived: `behind` (behind the goal, the keeper's own view), `front` (TV view from behind the striker) or `vr` (the Rift S headset, fixed coach seat behind the goal). Added after the first P2 logs; older files don't have it. Compare reaction times only within one view |
 | `assist` | `1` = assist was on when the cue started: the target was shown (call-out, glowing ground marker, strip outline). `0` = off: the player only had the striker's run-up and the ball, so `reaction_time` (still measured from cue onset) mixes in the time to read the striker. Analyse the two separately. Toggled with **H** |
 
 Slots are always **keeper-relative**, whatever the camera: positive = the keeper's right = biceps. In the `front` view the keeper faces the player, so a positive slot appears on the *left* of the screen (the HUD and the keyboard flip to match the screen; the EMG mapping never flips).

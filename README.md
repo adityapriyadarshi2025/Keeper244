@@ -20,7 +20,7 @@ BioRadio (2 ch sEMG) ─► Python bridge: band-pass → notch → RMS envelope 
 | P0 | Setup: repo, Unity 6.3 LTS project, Python env, TA questions | done (TA questions pending) |
 | P1 | Game core: scene, round loop, keyboard input, 3-zone L1 | done — playable on keyboard |
 | P2 | Game complete: L0–L3, HUD, scoring, menus, shot logging | done — plus look pass and two cameras (C to switch) |
-| P3 | Game networking: UDP in/out, NO SIGNAL, fake sender, Windows build | in progress — code done; checking in Unity, then the Windows build on a lab PC |
+| P3 | Game networking: UDP in/out, NO SIGNAL, fake sender, Windows build, VR | in progress — UDP tested end to end; VR mode (Oculus Rift S) built, to test with the Windows build on the lab PC |
 | P4 | Python bridge on the simulator | |
 | P5 | BioRadio bring-up + first dataset | |
 | P6 | Offline analysis; lock DSP parameters | |

@@ -2,7 +2,8 @@
     "name": "Keeper244.Runtime",
     "rootNamespace": "Keeper244",
     "references": [
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "UnityEngine.UI"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

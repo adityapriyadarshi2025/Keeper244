@@ -1,5 +1,9 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.XR;
+using UnityEngine.XR;
 
 namespace Keeper244.Look
 {
@@ -17,6 +21,11 @@ namespace Keeper244.Look
     /// In the Front view the keeper faces the camera, so his right is on the LEFT of the screen.
     /// <see cref="Mirrored"/> tells the HUD and the keyboard to flip what they show/accept; the
     /// game logic and the EMG mapping stay keeper-relative (biceps = keeper's right).
+    ///
+    /// VR (<see cref="SetVr"/>, brief §3.8): the camera sits under a "CameraRig" parent fixed at the
+    /// coach seat behind the goal; a TrackedPoseDriver adds only the participant's own head
+    /// movement. No orbit, swing, shake or zoom in VR (they cause motion sickness), and always the
+    /// behind-the-goal view, so left and right are never mirrored in the headset.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public sealed class CameraDirector : MonoBehaviour
@@ -57,6 +66,12 @@ namespace Keeper244.Look
         [SerializeField] float behindGoalHalfWidth = 12f;
         [SerializeField] float behindGoalMaxHeight = 8f;
 
+        [Header("VR (coach seat)")]
+        [Tooltip("Where the participant's eyes are in VR: the behind-the-goal view's position.")]
+        [SerializeField] Vector3 vrEyePosition = new Vector3(0f, 4f, -5.25f);
+        [Tooltip("A small platform under the seat, so the participant isn't floating.")]
+        [SerializeField] bool vrPlatform = true;
+
         [Header("Menu orbit")]
         [SerializeField] Vector3 orbitCentre = new Vector3(0f, 2f, 14f);
         [SerializeField] float orbitRadius = 30f;
@@ -78,12 +93,25 @@ namespace Keeper244.Look
         float shakeAmp, shakeTime, shakeDur;
         float punch, punchT = -1f;
         bool netHidden;
+        bool vr;
+        Transform rig;
+        TrackedPoseDriver headPose;
+        GameObject platform;
 
         /// <summary>The play view selected (the camera may still be swinging towards it).</summary>
         public View Current => to;
 
-        /// <summary>true when the keeper faces the camera, so his right is on the left of the screen.</summary>
-        public bool Mirrored => to == View.Front;
+        /// <summary>true when the keeper faces the camera, so his right is on the left of the screen. Never in VR.</summary>
+        public bool Mirrored => !vr && to == View.Front;
+
+        /// <summary>The camera is the headset (fixed coach seat, head tracking only).</summary>
+        public bool InVr => vr;
+
+        /// <summary>Where the participant's eyes are in VR (the world-space HUD faces this point).</summary>
+        public Vector3 VrEyePosition => vrEyePosition;
+
+        /// <summary>The view as logged in shots.csv: "behind", "front" or "vr".</summary>
+        public string LogName => vr ? "vr" : Name(to);
 
         /// <summary>Raised when the selected play view changes.</summary>
         public event Action<View> ViewChanged;
@@ -139,6 +167,7 @@ namespace Keeper244.Look
 
         public void Shake(float amplitude, float seconds)
         {
+            if (vr) return; // never move the headset view
             shakeAmp = amplitude;
             shakeDur = seconds;
             shakeTime = 0f;
@@ -147,12 +176,19 @@ namespace Keeper244.Look
         /// <summary>Brief zoom-in (fraction of the field of view).</summary>
         public void Punch(float amount)
         {
+            if (vr) return;
             punch = amount;
             punchT = 0f;
         }
 
         void LateUpdate()
         {
+            if (vr)
+            {
+                UpdateNet(transform.position); // the head is behind the goal: keep the net hidden
+                return;                        // the TrackedPoseDriver moves the camera, nothing else
+            }
+
             float dt = Time.unscaledDeltaTime;  // keeps moving while paused
             blend = Mathf.MoveTowards(blend, menu ? 0f : 1f, dt / Mathf.Max(0.01f, blendSeconds));
             float eb = blend * blend * (3f - 2f * blend);
@@ -190,6 +226,87 @@ namespace Keeper244.Look
 
             transform.SetPositionAndRotation(pos, rot);
             cam.fieldOfView = fov;
+        }
+
+        // ---------------- VR ----------------
+
+        /// <summary>Switch between the desktop camera and the headset's fixed coach seat.</summary>
+        public void SetVr(bool on)
+        {
+            if (on == vr) return;
+            EnsureRig();
+            vr = on;
+            shakeTime = shakeDur;
+            punchT = -1f;
+            if (on)
+            {
+                rig.SetPositionAndRotation(vrEyePosition, Quaternion.identity); // facing the striker
+                transform.localPosition = Vector3.zero;
+                transform.localRotation = Quaternion.identity;
+                headPose.enabled = true;
+                if (platform != null) platform.SetActive(true);
+                RecenterVr();
+            }
+            else
+            {
+                headPose.enabled = false;
+                if (platform != null) platform.SetActive(false);
+                rig.SetPositionAndRotation(Vector3.zero, Quaternion.identity); // desktop: LateUpdate places the camera
+            }
+        }
+
+        /// <summary>Seated tracking: the participant's head becomes the seat's eye point, facing the striker.</summary>
+        public void RecenterVr()
+        {
+            var inputs = new List<XRInputSubsystem>();
+            SubsystemManager.GetSubsystems(inputs);
+            foreach (var s in inputs)
+            {
+                s.TrySetTrackingOriginMode(TrackingOriginModeFlags.Device);
+                s.TryRecenter();
+            }
+        }
+
+        /// <summary>Camera rig parent, head tracking and the seat platform, created on first use (no scene rebuild).</summary>
+        void EnsureRig()
+        {
+            if (rig == null)
+            {
+                rig = transform.parent;
+                if (rig == null)
+                {
+                    rig = new GameObject("CameraRig").transform;
+                    rig.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+                    transform.SetParent(rig, true);
+                }
+            }
+            if (headPose == null)
+            {
+                headPose = GetComponent<TrackedPoseDriver>();
+                if (headPose == null) headPose = gameObject.AddComponent<TrackedPoseDriver>();
+                headPose.trackingType = TrackedPoseDriver.TrackingType.RotationAndPosition;
+                headPose.updateType = TrackedPoseDriver.UpdateType.UpdateAndBeforeRender;
+                headPose.positionInput = new InputActionProperty(new InputAction("Head Position", InputActionType.Value,
+                    "<XRHMD>/centerEyePosition", expectedControlType: "Vector3"));
+                headPose.rotationInput = new InputActionProperty(new InputAction("Head Rotation", InputActionType.Value,
+                    "<XRHMD>/centerEyeRotation", expectedControlType: "Quaternion"));
+                headPose.enabled = false;
+            }
+            if (platform == null && vrPlatform)
+            {
+                // seated eye height ≈ 1.2 m above the feet; the platform stays below every line of sight to the pitch
+                platform = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                platform.name = "VR Seat Platform";
+                Destroy(platform.GetComponent<Collider>());
+                platform.transform.SetParent(rig, false);
+                platform.transform.localPosition = new Vector3(0f, -1.25f, 0.1f);
+                platform.transform.localScale = new Vector3(1.4f, 0.08f, 1.0f);
+                var r = platform.GetComponent<Renderer>();
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                var shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader != null) r.material = new Material(shader) { color = new Color(0.12f, 0.13f, 0.15f) };
+                platform.SetActive(false);
+            }
         }
 
         Pose PoseOf(View v) => v == View.Front ? front : behindGoal;

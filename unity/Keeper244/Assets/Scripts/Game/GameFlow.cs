@@ -14,8 +14,12 @@ namespace Keeper244.Game
     /// (pass a level at ≥ its unlock fraction to open the next) and logging.
     ///
     /// Input: Keyboard, or EMG over UDP from the Python bridge / tools/fake_sender.py (P3).
-    /// Keys while playing: Esc = pause, R = restart level, C = switch camera, H = assist on/off,
-    /// M = send a trial mark to Python, F1 = debug panel. Input, camera and assist are remembered.
+    /// Display: desktop, or the VR headset (VrSession; on Windows it starts automatically when a
+    /// headset is connected). In VR the operator keeps this window's menus and HUD; the participant
+    /// sees the fixed coach seat and the world-space signs (VrHud).
+    /// Keys while playing: Esc = pause, R = restart level, C = switch camera (desktop), H = assist,
+    /// M = send a trial mark to Python, V = recentre the headset view, F1 = debug panel.
+    /// Input, camera and assist are remembered.
     /// </summary>
     public sealed class GameFlow : MonoBehaviour
     {
@@ -71,6 +75,8 @@ namespace Keeper244.Game
 
         const string PrefInput = "k244.input";
         bool useEmg;
+        VrSession vr;
+        VrHud vrHud;
         string toast;
         float toastAt = -10f;
 
@@ -78,6 +84,12 @@ namespace Keeper244.Game
         public bool UsingEmg => useEmg && emg != null;
 
         IInputProvider Input => UsingEmg ? emg : (IInputProvider)keyboard;
+
+        /// <summary>The headset session (always present; off on a Mac or without XR packages).</summary>
+        public VrSession Vr => vr;
+
+        /// <summary>Result of the level that just finished (results screen), or null.</summary>
+        public LevelResult LastResult => lastResult;
 
         void Awake()
         {
@@ -88,6 +100,22 @@ namespace Keeper244.Game
             Ui.Body = bodyFont;
             participant = PlayerPrefs.GetString(PrefParticipant, "P01");
             LoadUnlocks();
+
+            // VR pieces are added at runtime, so no scene rebuild is needed for them
+            vr = GetComponent<VrSession>();
+            if (vr == null) vr = gameObject.AddComponent<VrSession>();
+            vrHud = GetComponent<VrHud>();
+            if (vrHud == null) vrHud = gameObject.AddComponent<VrHud>();
+            vrHud.Bind(game, this, cameraDirector != null ? cameraDirector.VrEyePosition : new Vector3(0f, 4f, -5.25f));
+            vr.Changed += OnVrChanged;
+        }
+
+        void OnVrChanged(bool on)
+        {
+            if (cameraDirector != null) cameraDirector.SetVr(on);
+            vrHud.SetVisible(on);
+            ApplyMirror();
+            Toast(on ? "VR HEADSET ON · V RECENTRES THE VIEW" : "VR HEADSET OFF · DESKTOP VIEW");
         }
 
         void OnEnable()
@@ -140,7 +168,9 @@ namespace Keeper244.Game
 
         public void ToggleCamera()
         {
-            if (cameraDirector != null) cameraDirector.ToggleView();
+            if (cameraDirector == null) return;
+            if (cameraDirector.InVr) { Toast("THE HEADSET ALWAYS USES THE COACH VIEW"); return; }
+            cameraDirector.ToggleView();
         }
 
         /// <summary>Assist: show where the ball is going (call-out, ground marker, strip outline).</summary>
@@ -171,6 +201,11 @@ namespace Keeper244.Game
             if (screen == ScreenId.Playing && kb.rKey.wasPressedThisFrame) StartLevel(currentIndex);
             // not on the menu: the participant ID field may be taking typed letters
             if (screen != ScreenId.Menu && kb.cKey.wasPressedThisFrame) ToggleCamera();
+            if (kb.vKey.wasPressedThisFrame && cameraDirector != null && cameraDirector.InVr)
+            {
+                cameraDirector.RecenterVr();
+                Toast("HEADSET VIEW RECENTRED");
+            }
             if (screen != ScreenId.Menu && kb.hKey.wasPressedThisFrame) SetAssist(!game.Assist);
             if (screen == ScreenId.Playing && kb.mKey.wasPressedThisFrame && events != null)
             {
@@ -278,7 +313,7 @@ namespace Keeper244.Game
         {
             var level = CurrentLevel;
             log?.WriteShot(r, participant, Input.SourceName, level != null ? level.settings.levelId : "",
-                           CameraDirector.Name(CameraView), game.AssistAtCue);
+                           cameraDirector != null ? cameraDirector.LogName : "", game.AssistAtCue);
         }
 
         void OnLevelCompleted(LevelResult r)
@@ -333,10 +368,10 @@ namespace Keeper244.Game
                 Ui.RoundBox(bx, by, bw, 64, new Color(Ui.Bad.r, Ui.Bad.g, Ui.Bad.b, 0.92f));
                 Ui.Label(bx + 24, by + 14, bw - 48, 40, "SCENE OUT OF DATE · STOP PLAY, THEN KEEPER244 > BUILD MAIN SCENE > REBUILD", 26, Color.white, display: true);
             }
-            Ui.Label(lx + 8, Ui.RefHeight - 60, 900, 30, "ESC PAUSE · R RESTART · C CAMERA · H ASSIST · M MARK · F1 DEBUG · A/D NEAR · SHIFT FAR", 20, Ui.Muted, display: true);
+            Ui.Label(lx + 8, Ui.RefHeight - 60, 1100, 30, "ESC PAUSE · R RESTART · C CAMERA · H ASSIST · M MARK · V RECENTRE VR · F1 DEBUG · A/D NEAR · SHIFT FAR", 20, Ui.Muted, display: true);
 
             // ---- panel, right ----
-            float w = 640f, h = 900f;
+            float w = 640f, h = 960f;
             float x = Ui.Width - w - 80f, y = (Ui.RefHeight - h) / 2f;
             Ui.RoundBox(x, y, w, h, Ui.Panel);
 
@@ -372,6 +407,21 @@ namespace Keeper244.Game
             GUILayout.Space(Ui.S(4));
             bool assist = GUILayout.Toggle(game.Assist, "  Assist: show where the ball is going  (H)", Ui.ToggleStyle(24));
             if (assist != game.Assist) SetAssist(assist);
+
+            GUILayout.Space(Ui.S(12));
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("VR HEADSET", Ui.LabelStyle(22, Ui.Muted, TextAnchor.UpperLeft, display: true), GUILayout.Width(Ui.S(170)));
+            Color vrColour = vr.IsOn ? Ui.Good : vr.Current == VrSession.State.Failed ? Ui.Accent : Ui.Muted;
+            GUILayout.Label(vr.Message, Ui.LabelStyle(18, vrColour));
+            if (vr.IsOn)
+            {
+                if (GUILayout.Button("STOP VR", Ui.ButtonStyle(18), GUILayout.Width(Ui.S(150)))) vr.Stop();
+            }
+            else if (vr.CanStart)
+            {
+                if (GUILayout.Button("START VR", Ui.ButtonStyle(18, primary: true), GUILayout.Width(Ui.S(150)))) vr.TryStart();
+            }
+            GUILayout.EndHorizontal();
 
             GUILayout.Space(Ui.S(14));
             GUILayout.Label("CHOOSE A LEVEL", Ui.LabelStyle(22, Ui.Muted, TextAnchor.UpperLeft, display: true));

@@ -4,7 +4,7 @@ Everyone does **A–C**. Only Aditya does **D** (creating the Unity project, onc
 
 ## A. Install
 
-| Tool | macOS (Aditya) | Windows 11 (Toshika, Pratham, Niv) |
+| Tool | macOS | Windows 11 |
 |---|---|---|
 | Git + Git LFS | `brew install git git-lfs` then `git lfs install` | [Git for Windows](https://git-scm.com/download/win) (LFS included) then `git lfs install` |
 | Python | 3.11 or 3.12 (`brew install python@3.12`) | 3.11 or 3.12 from [python.org](https://www.python.org/downloads/windows/) — tick **Add to PATH** |
@@ -131,10 +131,33 @@ Lab PCs run the built game; they don't need Unity.
 - On the lab PC: run `Keeper244.exe` and start the bridge (or `fake_sender.py`) on the same PC. The game listens on 127.0.0.1 only, so Windows Firewall does not prompt. Logs: `%USERPROFILE%\AppData\LocalLow\Team20\Keeper244\sessions`.
 - **Build Game → macOS** makes a Mac app the same way (demos).
 
-## Phase 0 done when
+## I. VR: Oculus Rift S
 
-- [ ] All 4 members cloned the repo and ran `pytest` green.
-- [x] `unity/Keeper244` committed (Unity 6000.3.26f1).
-- [ ] All 4 opened it in 6000.3.26f1 without errors.
-- [ ] Roles filled in the README.
-- [ ] TA questions asked (in person).
+The game shows in the lab's Rift S through OpenXR. The participant only watches: no controllers, because gripping one tenses the forearm and pollutes the EMG. The operator runs everything from the desktop window, which keeps the normal menus and HUD. The headset shows a fixed coach seat behind the goal (head tracking only, never moved by the game) with floating signs for the call-out, scoreboard and muscle bars.
+
+**One-time Unity setup (on the Mac, then commit):**
+
+1. **Window → Package Manager → Unity Registry →** search **OpenXR Plugin → Install**. It brings XR Plug-in Management with it.
+2. **Edit → Project Settings → XR Plug-in Management**, desktop tab (Windows, Mac, Linux): tick **OpenXR**, and **untick "Initialize XR on Startup"**. The game starts the headset itself, and only on Windows, so the Mac never tries.
+3. **XR Plug-in Management → OpenXR**, desktop tab: *Enabled Interaction Profiles* **+ → Oculus Touch Controller Profile**; *Render Mode* **Single Pass Instanced**.
+4. **XR Plug-in Management → Project Validation → Fix All** (ignore Android items).
+5. Press Play on the Mac: the menu's **VR HEADSET** line should say *VR needs the Windows PC*. That means the XR code is installed. If it says *VR packages not installed*, step 1 didn't finish.
+6. Commit `Packages/manifest.json`, `Packages/packages-lock.json`, `Assets/XR/` and `ProjectSettings/`.
+
+If step 2 won't let you tick OpenXR on the Mac, do steps 2–4 on a teammate's Windows machine and commit from there.
+
+**Lab PC (Windows 10/11), once:**
+
+- Rift S cable: **DisplayPort into the graphics card** (not the motherboard) and **USB 3.0**. The GPU needs at least a GTX 1050 Ti (GTX 1060 recommended).
+- Install Meta's PC app (**Meta Horizon Link**, formerly the Oculus app), pair the Rift S, and set up a stationary (seated) boundary.
+- In the Meta app: **Settings → General → OpenXR Runtime → set Meta Horizon Link as active**, and turn on **Unknown Sources** so a game from outside the Meta store can start.
+- If the headset shows only black after a Meta app update, a clean reinstall of the app fixes it (Rift S is a legacy headset in that app).
+
+**Each session:**
+
+1. Start the Meta app with the Rift S connected, then the game (the Windows build, or Unity Play on a Windows machine).
+2. The menu's **VR HEADSET** line turns green: *In the headset*. If not, press **START VR** and read the reason it gives.
+3. Sit the participant down, have them look at the striker, press **V** to recentre the view, then start the level from the desktop menu.
+4. **F1** shows `display VR · … · 80 Hz`; the fps must hold **80** (the Rift S refresh rate). `shots.csv` logs `camera = vr` for these shots.
+
+**STOP VR** in the menu returns to the desktop view; pulling the cable does the same within a second.

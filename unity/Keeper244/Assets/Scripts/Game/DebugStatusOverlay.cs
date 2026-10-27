@@ -1,6 +1,8 @@
 using System.Text;
 using Keeper244.Core;
+using Keeper244.Look;
 using Keeper244.Net;
+using UnityEngine.XR;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -38,6 +40,11 @@ namespace Keeper244.Game
             sb.Clear();
             sb.AppendLine("<b>DEBUG (F1)</b>");
             sb.AppendLine($"fps            {fps:0}");
+            var vr = GetComponent<VrSession>();
+            if (vr != null)
+                sb.AppendLine(vr.IsOn
+                    ? $"display        VR · {vr.DeviceName} · {VrSession.RefreshRate:0} Hz · {XRSettings.eyeTextureWidth}x{XRSettings.eyeTextureHeight}/eye"
+                    : $"display        desktop · VR: {vr.Message}");
             sb.AppendLine($"level          {(game.Level != null ? game.Level.settings.levelId : "—")}  zones {game.Zones}");
             if (m != null)
             {

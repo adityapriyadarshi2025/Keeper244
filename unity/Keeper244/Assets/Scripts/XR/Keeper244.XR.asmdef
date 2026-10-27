@@ -1,0 +1,25 @@
+{
+    "name": "Keeper244.XR",
+    "rootNamespace": "Keeper244.XR",
+    "references": [
+        "Keeper244.Runtime",
+        "Unity.XR.Management"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "KEEPER_XR"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.xr.management",
+            "expression": "4.0.0",
+            "define": "KEEPER_XR"
+        }
+    ],
+    "noEngineReferences": false
+}

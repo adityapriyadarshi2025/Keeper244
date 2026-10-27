@@ -156,45 +156,54 @@ namespace Keeper244.Game
 
         void DrawCallout()
         {
+            Callout(game, Mirrored, out string big, out string small, out Color col);
+            if (big != null) Ui.ShadowLabel(0, 150, Ui.Width, 110, big, 92, col);
+            if (small != null) Ui.ShadowLabel(0, big != null ? 250 : 150, Ui.Width, 40, small, 30, Ui.Text);
+        }
+
+        /// <summary>
+        /// The centre call-out for the current round state (shared with the VR HUD): RELAX, the
+        /// target direction while assist is on, WATCH THE STRIKER while it is off, FULL TIME.
+        /// </summary>
+        public static void Callout(GameManager game, bool mirrored, out string big, out string small, out Color colour)
+        {
+            big = null;
+            small = null;
+            colour = Ui.Text;
             var m = game.Machine;
-            string big = null, small = null;
-            Color col = Ui.Text;
             float pulse = 0.85f + 0.15f * Mathf.Sin(Time.unscaledTime * 6f);
 
             if (game.IsFreePlay)
             {
                 small = "FLEX TO MOVE THE KEEPER";
+                return;
             }
-            else
+            if (m == null) return;
+            switch (m.State)
             {
-                switch (m.State)
-                {
-                    case RoundState.WaitRest:
-                        big = "RELAX";
-                        small = $"HOLD STILL  {m.RestTime:0.0} / {m.Settings.restGateSeconds:0.0} S";
-                        col = Ui.Info;
-                        break;
-                    case RoundState.Cue:
-                        if (game.Assist)
-                        {
-                            big = Direction(m.CurrentTarget, m.Settings.zones, Mirrored);
-                            small = "SHOT INCOMING";
-                        }
-                        else small = "WATCH THE STRIKER";       // assist off: timing only, no direction
-                        col = new Color(Ui.Cue.r, Ui.Cue.g, Ui.Cue.b, pulse);
-                        break;
-                    case RoundState.Flight:
-                        if (game.Assist) big = Direction(m.CurrentTarget, m.Settings.zones, Mirrored);
-                        col = Ui.Cue;
-                        break;
-                    case RoundState.Complete:
-                        big = "FULL TIME";
-                        col = Ui.Good;
-                        break;
-                }
+                case RoundState.WaitRest:
+                    big = "RELAX";
+                    small = $"HOLD STILL  {m.RestTime:0.0} / {m.Settings.restGateSeconds:0.0} S";
+                    colour = Ui.Info;
+                    break;
+                case RoundState.Cue:
+                    if (game.Assist)
+                    {
+                        big = Direction(m.CurrentTarget, m.Settings.zones, mirrored);
+                        small = "SHOT INCOMING";
+                    }
+                    else small = "WATCH THE STRIKER";       // assist off: timing only, no direction
+                    colour = new Color(Ui.Cue.r, Ui.Cue.g, Ui.Cue.b, pulse);
+                    break;
+                case RoundState.Flight:
+                    if (game.Assist) big = Direction(m.CurrentTarget, m.Settings.zones, mirrored);
+                    colour = Ui.Cue;
+                    break;
+                case RoundState.Complete:
+                    big = "FULL TIME";
+                    colour = Ui.Good;
+                    break;
             }
-            if (big != null) Ui.ShadowLabel(0, 150, Ui.Width, 110, big, 92, col);
-            if (small != null) Ui.ShadowLabel(0, big != null ? 250 : 150, Ui.Width, 40, small, 30, Ui.Text);
         }
 
         void DrawPopup()
@@ -315,7 +324,7 @@ namespace Keeper244.Game
         }
 
         /// <summary>Where the shot goes, as seen on screen.</summary>
-        static string Direction(int target, int zones, bool mirrored)
+        public static string Direction(int target, int zones, bool mirrored)
         {
             if (target == 0) return "CENTRE · STAY RELAXED";
             int onScreen = mirrored ? -target : target;
