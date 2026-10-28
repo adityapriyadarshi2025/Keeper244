@@ -4,12 +4,14 @@
 
 Official title: *Real-Time EMG Signal Processing for Biceps and Triceps Muscle-Controlled VR Football Goalkeeping Using Unity*
 
-Status as of 2026-10-19: the project is chosen and the game concept plus technical design are drafted (this file). Phase 0 (setup) is nearly done: repo `Keeper244` on GitHub, Python env + CI, Unity project created; remaining: teammates' setup, roles, TA questions. The BioRadio hardware details are still unconfirmed (see §11).
+Status as of 2026-10-28: the game is built (P1–P3: levels, HUD, logging, UDP networking, NO SIGNAL handling, VR mode for the Rift S), and the Python bridge is built and tested on the simulator (P4). The BioRadio live-data route is confirmed from the course kit (§5.1). Next, on a Windows laptop: the BioRadio probe (P5), the Windows build and the VR test. Open: lab hours, deadlines, the BioRadio's exact model (§11).
 
 **Changelog**
 
 | Date | Change |
 |---|---|
+| 2026-10-28 | **P4 bridge built and tested on the simulator:** streaming band-pass + notch, moving-RMS envelope, guided calibration (§4.4), decision state machine (§4.5), session recorder (§5.4), live monitor, `python -m emg_bridge run / calibrate / record / replay`. All §5.6 tests pass, including end to end over UDP. Bridge-side handling of bad data added to §4.7 |
+| 2026-10-28 | **BioRadio route confirmed** (course kit `BioRadio_Student_Unity_Kit`): Windows + Bluetooth + the vendor's `BioRadioSDK.dll` (.NET Framework 4.5) loaded into Python with `pythonnet`; channels set in BioCapture, which must then be closed (§5.1, §5.2, §10, §11). The kit's own bridge and Unity script are a teaching demo (unfiltered batch RMS, its own UDP format on port 50557); we call the SDK directly. The SDK stays out of the public repo |
 | 2026-10-27 | **VR mode built (P3):** coach view (user choice), display only (no controllers, to keep the EMG clean), world-space signs, auto-start on Windows, V to recentre (§3.8). To be tested on the lab PC |
 | 2026-10-27 | **VR confirmed: the lab has an Oculus Rift S** (TA answer). PC-tethered, Windows only; the game's VR mode targets it through the Unity OpenXR plugin (§3.8, §5.1, §11) |
 | 2026-10-19 | Project renamed **MyoKeeper → Keeper244** (user decision). Repo, Unity project and docs use the new name |
@@ -412,7 +414,8 @@ The biggest levers are the envelope window and the dwell time. E3 measures the t
 ### 4.7 Failure handling
 
 - **Signal loss:** if Unity receives no packet for 250 ms, the keeper returns to centre and a NO SIGNAL banner shows. The round pauses; the shot is voided, not counted as a goal. The voided shot is replayed (same target) after the rest gate once the signal is back, so the level keeps its balanced target set; Unity sends a `shot_void` event and `levels.csv` counts them (`voided`).
-- **Sensor status:** Python sets `status` (ok / no_data / saturated / flatline) and sends it in every packet. Saturation = ADC at its limits; flatline = rest SD near 0 (lead off).
+- **Sensor status:** Python sets `status` (ok / no_data / saturated / flatline) and sends it in every packet. Saturation = a raw sample beyond 99.5 % of the device range; flatline = the filtered envelope below 0.5 µV on both channels for 1 s (lead off); no_data = more than 25 % of the envelope window missing (all in `config.yaml` `status`).
+- **Bridge side (P4):** missing samples (the SDK's pad value) never reach the filters: they are held at the last value, the window's RMS uses the good samples only, and a `no_data` frame does not change the slot. If the source delivers nothing for 150 ms, the bridge stops sending, so Unity shows NO SIGNAL at 250 ms; when data returns after a gap in the sample counter, the filters restart. Every gap is logged in `events.csv`.
 - **Clamping:** activations are clipped to [0, 1.5]. Unity moves the keeper at a capped speed (adjacent slot in ~0.15 s), so there are no teleports.
 - **Packet order:** Unity drops packets whose `seq` is older than the last one it saw.
 
@@ -428,33 +431,32 @@ The biggest levers are the envelope window and the dwell time. E3 measures the t
 | Analysis | Jupyter, numpy, scipy, pandas, matplotlib **[PROPOSED]** | Offline notebooks (§7) |
 | Game | **Unity 6.3 LTS, pinned at 6000.3.26f1, Universal 3D (URP) template, C#, Input System package [DECIDED]** | 6.0 LTS support ends Oct 2026; 6.3 LTS is supported to Dec 2027. The patch is pinned in `ProjectSettings/ProjectVersion.txt`; everyone installs exactly that patch. Lab PCs only need the built `.exe`, not Unity. `UdpClient` on a background thread; `JsonUtility` for parsing |
 | VR (Oculus Rift S) | Unity OpenXR plugin + XR Plug-in Management (Oculus Touch profile); XR Interaction Toolkit only if controllers are used | Fixed camera (§3.8); Windows only |
-| Device access | **[UNVERIFIED]** Vendor pages mention LabVIEW and MATLAB drivers and an "open architecture". The course guide says "BioRadio software/SDK". The real route (vendor API? BioCapture streaming? LSL? MATLAB driver → UDP?) must be confirmed with the TA (§11) | Hidden behind `EMGSource`, so the rest of the system never depends on it |
+| Device access | **[CONFIRMED 2026-10-28, course kit]** Windows only. The vendor's .NET SDK `BioRadioSDK.dll` (Great Lakes NeuroTechnologies, v1.0.266, .NET Framework 4.5, AnyCPU so it loads in 64-bit Python) through `pythonnet` 3.x, which uses .NET Framework by default on Windows. Channels and sample rate are set in BioCapture, which must be closed before streaming. The SDK also reports dropped packets, marks missing samples with a pad value, keeps a device clock (`TotalAcquisitionTime`), and gives the battery, the marker button and the device configuration as XML. Fallbacks if `pythonnet` fails: a small C# relay (the SDK is .NET), or the MATLAB SDK in the same kit | `BioRadioSource` (`sources/bioradio.py`) behind `EMGSource`; smoke test `tools/bioradio_probe.py` |
 
-### 5.2 `EMGSource` abstraction (build this first)
+### 5.2 `EMGSource` abstraction (built in P4)
 
 ```python
-from abc import ABC, abstractmethod
-import numpy as np
-
-class EMGSource(ABC):
-    fs: float                 # nominal sample rate (verify from timestamps)
-    channels: list[str]       # ["biceps", "triceps"]
-
-    @abstractmethod
+class EMGSource(ABC):            # emg_bridge/sources/base.py
+    info: SourceInfo             # kind, fs, channels, units ("V"), ADC range, device details
     def start(self) -> None: ...
-    @abstractmethod
-    def read(self) -> tuple[np.ndarray, np.ndarray]:
-        """Non-blocking. Returns (t[N], x[N, C]) of all samples since the last call (N may be 0).
-        t in seconds on the bridge's monotonic clock; x in volts (or device units, documented)."""
-    @abstractmethod
+    def read(self) -> Chunk: ...  # non-blocking: every sample since the last call (N may be 0)
     def stop(self) -> None: ...
+
+@dataclass
+class Chunk:
+    n0: int            # absolute index of the first sample; a jump means samples were lost (the bridge logs a gap)
+    x: np.ndarray      # (N, C) in volts; NaN = a sample the device reported missing
+    t_arrival: float   # PC clock when read, to measure the real fs
+    dropped: int       # dropped packets reported by the device so far
 ```
+
+Samples are timed by their index (t = t_first + n / fs), not by when they arrived: Bluetooth delivers them in bursts, so arrival times jitter while the sample count is exact. `chunks.csv` keeps the arrival times, so the real fs and any clock drift are measured afterwards (§5.4).
 
 Implementations:
 
-1. **`SimulatedSource`.** Hardware-free development. Per channel: band-limited noise (white noise through a 20–450 Hz band-pass), multiplied by a drive envelope set from the keyboard or sliders (e.g. keys 1/2 = biceps light/strong, 3/4 = triceps light/strong; the drive ramps over ~150 ms). Then add a 50 Hz sinusoid (mains), a white noise floor, a small crosstalk fraction of the other channel (~5–10 %, tunable), and optional motion-artifact bumps (low-frequency, large amplitude). This lets the whole pipeline, the game, *and* the noise-analysis notebooks be developed before any lab time.
-2. **`ReplaySource`.** Streams a recorded `raw.csv` at real-time pace, for regression tests and offline tuning on real data.
-3. **`BioRadioSource`.** Real device. Implementation TBD once the access route is known.
+1. **`SimulatedSource`.** Hardware-free development. Per channel: white noise through the 20–450 Hz band-pass (the EMG carrier) times a drive envelope (fraction of MVC, first-order ramp), plus crosstalk from the other muscle (8 %), broadband electrode noise, 50 Hz mains, optional motion-artifact bumps and an ADC clip; delivered in 20 ms bursts like a Bluetooth link, with dropouts on demand. Two players flex it: `KeysPlayer` (1/2 = biceps light/strong, 3/4 = triceps light/strong, space = relax, c = co-contraction, m = artifact, p = 1 s dropout) and `AutoPlayer`, which reacts to each `shot_cue` from the game. Both act out the calibration prompts. All levels in `config.yaml` `simulator`.
+2. **`ReplaySource`.** Streams a recorded session's `raw.csv` in real time (`speed 1`, e.g. to drive the game) or as fast as possible (`speed 0`, for offline tuning: E3, E4).
+3. **`BioRadioSource`.** The real device through `BioRadioSDK.dll` (§5.1). Maps biceps/triceps to channel positions or names (`config.yaml` `bioradio.channels`), converts the SDK's units to volts, turns pad values into NaN, reports dropped packets, saves the device configuration into the session folder, and turns the marker button into a mark. Its logic is tested on any OS against `FakeBioRadioSdk`, a stand-in with the same object model.
 
 ### 5.3 Network protocol (localhost UDP, JSON) **[DECIDED — frozen in P1]**
 
@@ -487,14 +489,19 @@ Unity derives the 3-zone slot as `sign(slot)`. `rest` = both channels below θ_o
 ### 5.4 Logging (every session)
 
 ```
-data/sessions/<YYYYMMDD_HHMM>_<participant>/
-  meta.json          # participant id, arm, electrode sites, device, fs nominal + measured, config snapshot, git hash
+data/sessions/<YYYYMMDD_HHMMSS>_<participant>/
+  meta.json          # participant, arm, note, source + device info (units, range, battery), fs nominal + measured,
+                     # config snapshot, git hash, run statistics (frames, packets, gaps, round trip)
   calibration.json   # mu_rest, sd_rest, e_mvc, a_light, a_strong, thresholds per channel
-  raw.csv            # t, biceps, triceps      (ALWAYS keep raw; never only processed)
-  envelope.csv       # t, e_b, e_t, a_b, a_t, slot, status
-  events.csv         # t, type, name, json_payload
-  shots.csv          # one row per shot, fields from §3.9
+  raw.csv            # n, t, biceps_uv, triceps_uv   (ALWAYS keep raw; NaN = missing sample)
+  chunks.csv         # t_arrival, n0, n, dropped     (one row per delivery: real fs, burstiness, drift)
+  envelope.csv       # k, t, e_b_uv, e_t_uv, a_b, a_t, slot, rest, status, seq   (100 Hz)
+  events.csv         # t, type, name, json           (game events, marks, calibration steps, gaps)
+  shots.csv          # one row per shot, fields from §3.9, on the bridge's clock and slots
+  device_config.xml  # BioRadio only: the device's own configuration
 ```
+
+Column details: `docs/SESSION_LOGS.md`. The game writes its own logs too (`docs/GAME_LOGS.md`); the bridge's are the authoritative copy because they share one clock with the raw EMG.
 
 ### 5.5 Repo layout
 
@@ -505,16 +512,18 @@ Keeper244/
   protocol/                   udp_examples.json (shared by Python and Unity tests)
   python/
     emg_bridge/
-      sources/                base.py, simulated.py, replay.py, bioradio.py
+      sources/                base.py, simulated.py (+ players), replay.py, bioradio.py, fake_bioradio.py
       dsp/                    filters.py (streaming SOS w/ state), envelope.py, features.py
       control/                calibration.py, decision.py (state machine §4.5)
-      net/                    udp_out.py, udp_in.py
-      io/                     recorder.py (session logging)
-      monitor.py              live pyqtgraph view: raw, envelope, thresholds, slot
-      main.py                 CLI: run | calibrate | record | replay
+      net/                    protocol.py, udp_out.py, udp_in.py
+      io/                     recorder.py (session logging), shots.py (per-shot metrics)
+      bridge.py               the real-time loop
+      monitor.py              live pyqtgraph view: filtered EMG, activations + thresholds, slot, prompts
+      main.py                 CLI: python -m emg_bridge run | calibrate | record | replay
     config.yaml
-    tests/                    test_filters.py, test_decision.py, test_udp.py
-    tools/                    fake_sender.py (Phase 3)
+    tests/                    filters, envelope, decision, calibration, sources, shots, bridge (end to end), protocol, udp
+    tools/                    fake_sender.py (P3), bioradio_probe.py (P5 smoke test)
+    vendor/                   BioRadioSDK.dll from the course kit (git-ignored)
     analysis/                 01_raw.ipynb ... 08_latency.ipynb (§7)
   unity/Keeper244/
     Assets/Scripts/           EMGReceiver.cs, IInputProvider.cs, EMGInput.cs, KeyboardInput.cs,
@@ -542,7 +551,7 @@ Keeper244/
 
 ## 6. Data acquisition protocol (per participant, ~45 min)
 
-1. **Device check.** Battery charged; fs set (≥ 1 kHz) and later verified from timestamps; both channels configured as EMG (bipolar).
+1. **Device check.** Battery charged; fs set (≥ 1 kHz) and later verified from timestamps; both channels configured as EMG (bipolar). On a new laptop, run `tools/bioradio_probe.py` once first (docs/SETUP.md).
 2. **Skin prep.** Shave if needed; light abrasion with prep gel; alcohol wipe; let it dry.
 3. **Electrode placement** (Ag/AgCl, ~20 mm inter-electrode distance, aligned with the muscle fibres). Sites follow SENIAM-style guidelines **[verify against SENIAM / BioRadio manual]**:
    - **Biceps brachii:** on the line from the medial acromion to the cubital fossa, at 1/3 of the distance from the cubital fossa.
@@ -671,7 +680,7 @@ The detailed plan lives in the "Keeper244 — Build Plan & Phases" doc. The game
 
 | Risk | Mitigation |
 |---|---|
-| BioRadio real-time access route unknown or awkward | Behind the `EMGSource` interface. Fallbacks in order: vendor API/SDK, then vendor software streaming (LSL if supported), then MATLAB driver → UDP to Python, then record-and-replay for development |
+| The 2014 BioRadio SDK (.NET 4.5, built-in Bluetooth stack) misbehaves on a modern Windows laptop | Route confirmed by the course kit but not yet run by us: `tools/bioradio_probe.py` first. Behind `EMGSource`, so fallbacks change nothing else: `pythonnet` → a small C# relay → the MATLAB SDK → record in BioCapture and use `ReplaySource` |
 | Limited lab time with the BioRadio (shared across many teams) | Simulator + replay for all development; batch the data collection; arrive with a printed protocol checklist |
 | Mixed platforms (Aditya on macOS, three teammates on Windows 11); vendor software / Quest Link likely Windows-only | Unity and Python are cross-platform and develop fine on the Mac; acquisition and VR run on a teammate's Windows laptop or a lab PC; `.gitattributes` normalises line endings |
 | Co-contraction makes direction ambiguous | Dominance ratio K, per-muscle normalisation, practice in L0; quantify it in E5 |
@@ -685,7 +694,7 @@ The detailed plan lives in the "Keeper244 — Build Plan & Phases" doc. The game
 ## 11. Open questions
 
 1. **VR headset — answered (2026-10-27):** the lab has an **Oculus Rift S** (§3.8).
-2. **BioRadio [OPEN]:** exact model, number of channels, max sample rate, resolution, battery. **How do we get live data into our own code** (vendor SDK and its language, BioCapture streaming/LSL, MATLAB/LabVIEW driver)? Which OS? How many units, what lab hours, and can it leave the lab?
+2. **BioRadio — route answered (2026-10-28, course kit):** Windows + Bluetooth + `BioRadioSDK.dll` through `pythonnet` (§5.1); the lab has at least two units (AOP, AOO). **Still [OPEN]:** the exact model, the sample rates BioCapture offers, lab hours, and whether a unit can leave the lab. The probe reads the channels, fs, units and battery from the device itself.
 3. **Windows machine — answered:** three teammates are on Windows 11.
 4. **Unity / C# experience — answered:** the whole team has used Unity; AI-assisted game coding is allowed.
 5. **Deadlines and deliverables [OPEN]:** final demo date, report/slides format, whether a video is required, and any intermediate check-ins.

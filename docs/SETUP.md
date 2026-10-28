@@ -161,3 +161,64 @@ If step 2 won't let you tick OpenXR on the Mac, do steps 2–4 on a teammate's W
 4. **F1** shows `display VR · … · 80 Hz`; the fps must hold **80** (the Rift S refresh rate). `shots.csv` logs `camera = vr` for these shots.
 
 **STOP VR** in the menu returns to the desktop view; pulling the cable does the same within a second.
+
+## J. Python bridge on the simulator (Phase 4)
+
+The real bridge: filters, envelope, calibration, decisions, logging. It runs the same on a Mac and on Windows; with `--source sim` no hardware is needed. In `python/` with the venv active:
+
+```bash
+pip install -r requirements.txt     # adds pyqtgraph + PySide6-Essentials (the live monitor)
+pytest                              # ~25 s; includes an end-to-end run against a stand-in for the game
+```
+
+**Play the game with simulated EMG:**
+
+1. Unity → Play → menu → **INPUT: EMG over UDP**.
+2. Start the bridge:
+
+   ```bash
+   python -m emg_bridge run                      # monitor window; you play with keys
+   python -m emg_bridge run --player auto        # hands-free: the simulated player reacts to each shot
+   ```
+
+3. A ~30 s quick calibration runs first: the simulated arm acts out each prompt (rest, maximum, light, strong) and the monitor shows them in large type. Then it says **PLAY** and streams to Unity.
+4. Keys go to the **monitor window**: `1` / `2` = biceps light / strong (keeper R1 / R2), `3` / `4` = triceps light / strong (L1 / L2), `space` = relax, `c` = co-contraction, `m` = motion artifact, `p` = a 1 s dropout (Unity shows NO SIGNAL), `k` = mark, `x` or `Esc` = quit.
+5. Next time, skip the calibration: `python -m emg_bridge run --calibration last`.
+
+What to check (P4 "done when"): key `2` moves the keeper to R2; the auto player saves L1–L3; `p` gives NO SIGNAL and a voided shot; the F1 panel in Unity shows ~100 Hz and the round trip.
+
+Other commands: `--no-monitor` (status in the terminal, keys there too), `python -m emg_bridge calibrate`, `python -m emg_bridge record` (labelled protocol trials, no game), `python -m emg_bridge replay ../data/sessions/<folder> --speed 0`. Every run writes a session folder: `docs/SESSION_LOGS.md`.
+
+## K. BioRadio on a Windows laptop (Phase 5)
+
+The BioRadio streams over Bluetooth to the vendor's .NET SDK, which only runs on Windows; Python loads it with `pythonnet` (brief §5.1). Do this on the Windows laptop that will run the game.
+
+**Once:**
+
+1. Install Python 3.12 from python.org (tick **Add to PATH**), clone the repo, and make the venv as in **C**. `pip install -r requirements.txt` also installs `pythonnet` on Windows.
+2. Copy **`BioRadioSDK.dll`** from the course kit (`BioRadio_Student_Unity_Kit/Python_Bridge/`) into **`python/vendor/`**. It is git-ignored on purpose: the kit says to keep the SDK within IITGN, and our repo is public. If Windows blocked the file: right-click → Properties → **Unblock**.
+3. Pair the BioRadio in Windows Bluetooth settings (it shows its ID, e.g. AOP or AOO, printed on the back).
+4. In **BioCapture**: enable **2 biopotential channels** (biceps, triceps; differential/bipolar), sample rate **2000 Hz**, and check both show a signal. Then **close BioCapture**: only one program can hold the Bluetooth link.
+
+**Smoke test (do this first, about 1 minute):**
+
+```powershell
+cd python
+.venv\Scripts\Activate.ps1
+python tools\bioradio_probe.py --scan-only      # lists the BioRadios in range
+python tools\bioradio_probe.py                  # connects, records 30 s; flex biceps, relax, flex triceps
+```
+
+It prints the device, its channels, units, sample rate and battery, then live RMS values (they should jump on the channel you flex), and finally a report with `[ok]` / `[!!]` checks: measured fs within 0.5 % of nominal, no dropped packets, delivery gaps, signal present, not saturated. Everything is saved under `data/probe/<time>/`. Send that folder (or just `report.txt` + `info.json`) back so we can tune the bridge.
+
+If the probe says the DLL won't load: Unblock the file, and check .NET Framework 4.8 is installed (it is on Windows 10/11). If it finds no device: BioRadio on, Bluetooth on, BioCapture closed, device close to the laptop, scan again. Put the MAC it prints into `config.yaml` → `bioradio.mac` to skip scanning next time. If the channels come out swapped, set `bioradio.channels` (positions or BioCapture channel names).
+
+**Then the real thing:**
+
+```powershell
+python -m emg_bridge record    --source bioradio --participant P01 --note "right arm, SENIAM sites"   # protocol trials (brief §6)
+python -m emg_bridge calibrate --source bioradio --participant P01
+python -m emg_bridge run       --source bioradio --participant P01 --calibration last                # play
+```
+
+On the BioRadio, calibration is the full brief §4.4 sequence: about 14 minutes, of which 5 are the electrode settling time and 6 are rests between maximum contractions (Enter skips those waits). `--quick` is for the simulator only. Add `--fake-sdk` to any of these to rehearse on a Mac: a built-in fake BioRadio streams simulated EMG through the same code.

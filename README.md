@@ -21,8 +21,8 @@ BioRadio (2 ch sEMG) ─► Python bridge: band-pass → notch → RMS envelope 
 | P1 | Game core: scene, round loop, keyboard input, 3-zone L1 | done — playable on keyboard |
 | P2 | Game complete: L0–L3, HUD, scoring, menus, shot logging | done — plus look pass and two cameras (C to switch) |
 | P3 | Game networking: UDP in/out, NO SIGNAL, fake sender, Windows build, VR | in progress — UDP tested end to end; VR mode (Oculus Rift S) built, to test with the Windows build on the lab PC |
-| P4 | Python bridge on the simulator | |
-| P5 | BioRadio bring-up + first dataset | |
+| P4 | Python bridge on the simulator | done — filters, envelope, calibration, decisions, logging, live monitor; tested end to end on the simulator |
+| P5 | BioRadio bring-up + first dataset | next, on a Windows laptop: `tools/bioradio_probe.py` (docs/SETUP.md §K) |
 | P6 | Offline analysis; lock DSP parameters | |
 | P7 | Real-time play with a real arm; latency | |
 | P8 | 5-zone + experiments (4 participants) | |
@@ -31,9 +31,11 @@ BioRadio (2 ch sEMG) ─► Python bridge: band-pass → notch → RMS envelope 
 ## Repo layout
 
 ```
-docs/          PROJECT_BRIEF.md (full design), SETUP.md, PROTOCOL.md (UDP contract), GAME_LOGS.md (shots.csv columns), source_docs/ (course files)
+docs/          PROJECT_BRIEF.md (full design), SETUP.md, PROTOCOL.md (UDP contract), GAME_LOGS.md (game's logs),
+               SESSION_LOGS.md (bridge's logs), source_docs/ (course files)
 protocol/      udp_examples.json: one example per UDP message, tested by Python and Unity
-python/        emg_bridge/ (DSP + decision + UDP), config.yaml, tests/, tools/ (fake_sender.py), analysis/
+python/        emg_bridge/ (sources, DSP, calibration, decision, UDP, logging, monitor), config.yaml, tests/,
+               tools/ (fake_sender.py, bioradio_probe.py), vendor/ (BioRadioSDK.dll, git-ignored), analysis/
 unity/         Keeper244/ (Unity 6.3 LTS project, created in P0)
 data/sessions/ recorded sessions (git-ignored; share via Drive)
 ```
@@ -54,7 +56,14 @@ Unity: open `unity/Keeper244` in Unity Hub with **Unity 6000.3.26f1** (6.3 LTS).
 
 ## Play without electrodes
 
-Unity → Play → INPUT **EMG over UDP**, then in `python/`: `python tools/fake_sender.py` (keys) or `--mode auto`. Details: [docs/SETUP.md §G](docs/SETUP.md).
+Unity → Play → INPUT **EMG over UDP**, then in `python/` with the venv active:
+
+```bash
+python -m emg_bridge run                 # simulated EMG through the real bridge; keys 1-4 / space in the monitor window
+python -m emg_bridge run --player auto   # hands-free
+```
+
+Details: [docs/SETUP.md §J](docs/SETUP.md). The real BioRadio (Windows only): [§K](docs/SETUP.md). Session files: [docs/SESSION_LOGS.md](docs/SESSION_LOGS.md).
 
 ## Key rules
 

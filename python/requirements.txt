@@ -1,4 +1,4 @@
-# Keeper244 Python bridge + analysis. Python 3.11 or 3.12.
+# Keeper244 Python bridge + analysis. Python 3.11 or 3.12 (3.13/3.14 also work).
 # Lower bounds only; tested on Windows, macOS and Linux in CI.
 
 # Core DSP / config
@@ -11,9 +11,12 @@ pandas>=2.1
 matplotlib>=3.8
 jupyterlab>=4.0
 
-# Live monitor (pyqtgraph needs a Qt binding)
+# Live monitor (pyqtgraph needs a Qt binding; Essentials is enough and ~10x smaller than full PySide6)
 pyqtgraph>=0.13.7
-PySide6>=6.6
+PySide6-Essentials>=6.6
+
+# BioRadio SDK (.NET) from Python: Windows only (brief §5.1)
+pythonnet>=3.0.5; sys_platform == "win32"
 
 # Tests
 pytest>=8.0

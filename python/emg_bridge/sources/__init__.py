@@ -1,1 +1,5 @@
-"""EMG sources: base EMGSource, SimulatedSource, ReplaySource, BioRadioSource (P4/P5)."""
+"""EMG sources behind one interface (brief §5.2): simulated, replay, BioRadio."""
+
+from .base import Chunk, EMGSource, SourceInfo
+
+__all__ = ["Chunk", "EMGSource", "SourceInfo"]

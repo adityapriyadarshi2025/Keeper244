@@ -68,6 +68,11 @@ dist/
 # ---------- Recorded data (big, personal; share via Drive, not git) ----------
 data/sessions/*
 !data/sessions/.gitkeep
+data/probe/
+
+# ---------- BioRadio SDK (course kit: keep within IITGN, never on GitHub) ----------
+python/vendor/*
+!python/vendor/README.md
 
 # ---------- OS / editor junk ----------
 .DS_Store
