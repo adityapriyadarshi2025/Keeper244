@@ -36,8 +36,9 @@ def run_monitor(bridge, title: str, help_text: str, run_kwargs: dict | None = No
             self.prompt.setFont(f)
             self.prompt.setWordWrap(True)
             lay.addWidget(self.prompt)
+            mono = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont)
             self.status = QtWidgets.QLabel("")
-            self.status.setStyleSheet("font-family: monospace;")
+            self.status.setFont(mono)
             lay.addWidget(self.status)
             glw = pg.GraphicsLayoutWidget()
             lay.addWidget(glw, 1)
@@ -60,7 +61,8 @@ def run_monitor(bridge, title: str, help_text: str, run_kwargs: dict | None = No
             self.lines: list = []
             self.cal_shown = None
             self.log = QtWidgets.QLabel("")
-            self.log.setStyleSheet("font-family: monospace; color: #aaa;")
+            self.log.setFont(mono)
+            self.log.setStyleSheet("color: #aaa;")
             self.log.setWordWrap(True)
             lay.addWidget(self.log)
             hl = QtWidgets.QLabel(help_text)

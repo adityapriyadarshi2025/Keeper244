@@ -44,10 +44,40 @@ def git_hash(repo: Path) -> str | None:
 
 def measured_fs(t_arrival: np.ndarray, n_end: np.ndarray) -> float | None:
     """Least-squares samples per second of the PC clock (needs ≥ 2 s of data)."""
-    if len(t_arrival) < 10 or t_arrival[-1] - t_arrival[0] < 2.0:
+    t_arrival, n_end = np.asarray(t_arrival, dtype=float), np.asarray(n_end, dtype=float)
+    if len(t_arrival) != len(n_end) or len(t_arrival) < 10 or t_arrival[-1] - t_arrival[0] < 2.0:
         return None
-    slope, _ = np.polyfit(t_arrival - t_arrival[0], n_end.astype(float), 1)
+    slope, _ = np.polyfit(t_arrival - t_arrival[0], n_end, 1)
     return float(slope)
+
+
+class RunningFit:
+    """The same least-squares slope, kept up to date in O(1) per point.
+
+    `fs` may be read from another thread (the monitor) while `add` runs in the bridge thread:
+    the sums live in one tuple that is replaced in a single assignment, so a reader always sees a
+    consistent set. Times and counts are taken relative to the first point to keep the sums small.
+    """
+
+    def __init__(self):
+        self._origin: tuple[float, float] | None = None
+        self._sums = (0, 0.0, 0.0, 0.0, 0.0, 0.0)  # n, Σt, Σy, Σt², Σty, last t
+
+    def add(self, t: float, y: float) -> None:
+        if self._origin is None:
+            self._origin = (t, y)
+        t0, y0 = self._origin
+        dt, dy = t - t0, y - y0
+        n, st, sy, stt, sty, _ = self._sums
+        self._sums = (n + 1, st + dt, sy + dy, stt + dt * dt, sty + dt * dy, dt)
+
+    @property
+    def fs(self) -> float | None:
+        n, st, sy, stt, sty, last = self._sums
+        if n < 10 or last < 2.0:
+            return None
+        den = n * stt - st * st
+        return (n * sty - st * sy) / den if den > 0 else None
 
 
 def safe_name(s: str) -> str:
@@ -77,8 +107,7 @@ class Recorder:
         self._shots_f = (self.dir / "shots.csv").open("w", encoding="utf-8", newline="")
         self._shots = csv.DictWriter(self._shots_f, fieldnames=SHOT_FIELDS)
         self._shots.writeheader()
-        self._arrivals: list[float] = []
-        self._n_ends: list[int] = []
+        self._fit = RunningFit()
         self._last_flush = time.perf_counter()
         self.samples = 0
         self.closed = False
@@ -95,8 +124,7 @@ class Recorder:
 
     def chunk(self, t_arrival: float, n0: int, n: int, dropped: int) -> None:
         self._chunks.write(f"{t_arrival:.5f},{n0},{n},{dropped}\n")
-        self._arrivals.append(t_arrival)
-        self._n_ends.append(n0 + n)
+        self._fit.add(t_arrival, float(n0 + n))
 
     def envelope(self, k: int, t: float, e: np.ndarray, a: np.ndarray, slot: int, rest: bool, status: str,
                  seq: int | None) -> None:
@@ -125,7 +153,7 @@ class Recorder:
     # --- meta -------------------------------------------------------------------------------
     @property
     def fs_measured(self) -> float | None:
-        return measured_fs(np.asarray(self._arrivals), np.asarray(self._n_ends))
+        return self._fit.fs
 
     def write_meta(self, **extra: Any) -> None:
         self.meta.update(extra)

@@ -62,7 +62,7 @@ class Bridge:
         self.clock, self.log = clock, log
         self.keys: "queue.Queue[str]" = queue.Queue()
         self.shots = ShotTracker()
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.stop_requested = False
         self.started = False
         self.frames_total = 0
@@ -126,7 +126,8 @@ class Bridge:
         return self.clock() - self.t0
 
     def note(self, msg: str) -> None:
-        self.messages.append(msg)
+        with self.lock:
+            self.messages.append(msg)
         self.log(msg)
 
     # --- keys ------------------------------------------------------------------------------
@@ -422,13 +423,14 @@ class Bridge:
         with self.lock:
             sig = np.array(self.sig_buf) if self.sig_buf else np.zeros((0, 3))
             fr = np.array(self.frame_buf) if self.frame_buf else np.zeros((0, 6))
+            messages = list(self.messages)
         prompt = self.procedure.prompt(self.now()) if self.procedure is not None and not self.procedure.done else ""
         return {"signal": sig, "frames": fr, "last": self.last_frame, "prompt": prompt,
                 "trial": (self.trials[self.trial_index] if self.trials else None, self.trial_open),
                 "calibration": self.calibration, "frame_rate": self.frame_rate,
                 "fs_measured": self.recorder.fs_measured if self.recorder is not None else None,
                 "rtt_ms": self.sender.round_trip.latest_ms if self.sender is not None else None,
-                "messages": list(self.messages), "mode": self.mode, "silent": self.source_silent,
+                "messages": messages, "mode": self.mode, "silent": self.source_silent,
                 "player": self.player.describe() if self.player is not None else ""}
 
     def status_line(self) -> str:
