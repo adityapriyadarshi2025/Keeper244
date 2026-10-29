@@ -23,6 +23,22 @@ envelope:
   hop_ms: 10                   # output rate = 1000 / hop_ms = 100 Hz
   lowpass_fc_hz: 5             # used only if method == lowpass (2nd-order Butterworth)
 
+profiles:                      # filter settings to compare in the game (handout: effect of filtering on
+                               # accuracy, response time, game performance). Overrides of filters/envelope above.
+  default: full
+  full: {}                     # band-pass 20-450 Hz + 50 Hz notch, 100 ms RMS (the settings above)
+  bandpass:                    # band-pass only: mains hum stays in
+    filters: {notch: {enabled: false}}
+  raw:                         # no EMG filtering: DC removal only (1 Hz high-pass), so motion and mains stay in
+    filters:
+      highpass: {enabled: true, order: 1, cutoff_hz: 1}
+      bandpass: {enabled: false}
+      notch: {enabled: false}
+  smooth:                      # steadier but slower: 250 ms RMS
+    envelope: {rms_window_ms: 250}
+  fast:                        # quicker but jumpier: 50 ms RMS
+    envelope: {rms_window_ms: 50}
+
 calibration:
   settle_s: 300                # electrode gel settling (operator can skip)
   ready_s: 3                   # "get ready" countdown before each recorded step
@@ -100,6 +116,17 @@ bioradio:                      # BioRadioSource (Windows only; brief §5.1)
     biceps: 1                  # 1-based position in BioCapture's enabled channel list, or the channel name
     triceps: 2
   poll_ms: 5                   # how often the bridge drains the SDK buffers
+
+protocol:                      # python -m emg_bridge protocol (brief §6): >= 5 min per condition (handout)
+  ready_s: 5
+  rest_s: 300                  # relaxed: noise floor, PSD, random-process statistics
+  contraction_block_s: 300     # per muscle: flex on cue, relax in between
+  on_s: 5
+  off_s: 5
+  levels: [light, strong]      # alternate
+  game_block_s: 300            # per filter profile below
+  game_profiles: [full, raw, bandpass]   # rotate the order between participants
+  break_s: 60                  # between blocks; Enter skips
 
 monitor:
   window_s: 5                  # seconds of signal shown

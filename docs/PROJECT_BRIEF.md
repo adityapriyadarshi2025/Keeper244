@@ -4,12 +4,15 @@
 
 Official title: *Real-Time EMG Signal Processing for Biceps and Triceps Muscle-Controlled VR Football Goalkeeping Using Unity*
 
-Status as of 2026-10-28: the game is built (P1–P3: levels, HUD, logging, UDP networking, NO SIGNAL handling, VR mode for the Rift S), and the Python bridge is built and tested on the simulator (P4). The BioRadio live-data route is confirmed from the course kit (§5.1). Next, on a Windows laptop: the BioRadio probe (P5), the Windows build and the VR test. Open: lab hours, deadlines, the BioRadio's exact model (§11).
+Status as of 2026-10-29: **due 10 November 2026** as a ≤ 15-minute video (§1.1, Appendix E). The game is built (P1–P3, incl. VR mode for the Rift S) and the Python bridge is built and tested on the simulator (P4), with switchable filter profiles, a timed 5-minute protocol and the full analysis figure set ready for real data. Next, on a Windows laptop: the BioRadio probe (P5), the Windows build and the VR test; then the lab sessions (§9.1 timeline).
 
 **Changelog**
 
 | Date | Change |
 |---|---|
+| 2026-10-29 | **Course handout received** (`SPRP_Project_2024_1.docx`, Appendix E): **due 10 Nov 2026**; deliverable = a **≤ 15-min video** with sections (a)–(f) and a live VR demo; **≥ 5 min of signal per activity/condition**; compare raw vs processed signals and **different filtering techniques by their effect on the game**; every member in every stage. Answers §11.5. Changes: §1.1, §6 (5-minute protocol), §7.2 (E4 live per profile, E10 random process), §9.1 dated timeline, §9.2 rotating roles |
+| 2026-10-29 | **Direction kept: biceps → keeper's RIGHT** (user decision), although the handout's #15 text says biceps → left, triceps → right. A deliberate, documented deviation; say so in the video (§3.2) |
+| 2026-10-29 | **Tooling for the handout:** filter **profiles** (`full`, `bandpass`, `raw`, `smooth`, `fast`) switchable live, one calibration gives thresholds for all; `python -m emg_bridge protocol` (timed 5-minute blocks with prompts); `tools/make_sim_session.py` (complete simulated sessions in ~1 min); `python -m analysis.figures` (15 slide-ready figures + summary numbers); `latency.csv` per keeper move (§5.7) |
 | 2026-10-28 | **P4 bridge built and tested on the simulator:** streaming band-pass + notch, moving-RMS envelope, guided calibration (§4.4), decision state machine (§4.5), session recorder (§5.4), live monitor, `python -m emg_bridge run / calibrate / record / replay`. All §5.6 tests pass, including end to end over UDP. Bridge-side handling of bad data added to §4.7 |
 | 2026-10-28 | **BioRadio route confirmed** (course kit `BioRadio_Student_Unity_Kit`): Windows + Bluetooth + the vendor's `BioRadioSDK.dll` (.NET Framework 4.5) loaded into Python with `pythonnet`; channels set in BioCapture, which must then be closed (§5.1, §5.2, §10, §11). The kit's own bridge and Unity script are a teaching demo (unfiltered batch RMS, its own UDP format on port 50557); we call the SDK directly. The SDK stays out of the public repo |
 | 2026-10-27 | **VR mode built (P3):** coach view (user choice), display only (no controllers, to keep the EMG clean), world-space signs, auto-start on Windows, V to recentre (§3.8). To be tested on the lab PC |
@@ -59,6 +62,17 @@ Each team must:
 2. **Identify and remove noise.**
 3. **Analyse** the signal in the time domain (waveform, RMS, MAV…) and the frequency domain (FFT/PSD…).
 4. **Control a Unity (VR) game in real time** with the processed signal, so that the game mimics what the body does.
+
+**The project handout (received 2026-10-29; key points in Appendix E):**
+
+- **Due 10 November 2026.** Groups of 4, honor system, open materials.
+- **Deliverable: a video presentation of at most 15 minutes** covering (a) project statement and objectives, (b) experimental setup and data acquisition procedure, (c) signal processing concepts and techniques, (d) VR game development and real-time signal integration, (e) results and analysis, (f) the contribution of each member. Figures, plots and tables with clear explanations. **It must demonstrate the VR game working** and explain how the processed signals control it.
+- **At least 5 minutes of real-time signal for each activity or experimental condition** (§6).
+- **Photographs and videos** of the setup, the acquisition and the VR game.
+- Identify noise; filtering, FFT, feature extraction (MAV, RMS, …).
+- **Compare raw and processed signals and evaluate the effect of signal processing on object movement, response time, accuracy and game performance.** Project #15's text: "compare different filtering techniques and evaluate their effects on movement accuracy, response time, and overall game performance" (§7.2 E4).
+- **Every member takes part in every stage**: acquisition, processing, game, analysis, presentation (§9.2).
+- Same five marking components as the rubric (§1.2).
 
 The course provides three sensor systems: Wii Balance Board (centre of pressure), **BioRadio sEMG** (ours), and FSR + Arduino. The course guide's EMG row suggests: band-pass, notch if needed, rectification, sliding RMS; features RMS/MAV/onset/offset; data path *BioRadio software/SDK → processing bridge → Unity*; failure handling *neutral state on connection drop, debounce triggers*; game metrics *false activations, response time, scores*. This design follows all of that (see Appendix B).
 
@@ -124,6 +138,7 @@ The player is a goalkeeper facing penalty kicks. Two surface-EMG channels sit on
 ```
 
 - Left and right are from the keeper's (player's) viewpoint, facing the striker **[PROPOSED]**.
+- **Direction vs the handout [DECIDED 2026-10-29]:** the handout's text for #15 says *biceps → left, triceps → right*. We keep **biceps → RIGHT** (user decision): the mapping is arbitrary for an isometric push up / push down, and ours matches the activation bars and the default camera. It is a deliberate deviation; the video says so in section (d).
 - 5-zone slot centres sit at multiples of 7.32/5 = 1.464 m. In 3-zone mode the zone centres are at 0 and ±2.44 m (7.32/3).
 - **Intensity, not duration, picks near vs far** **[DECIDED]**. Intensity means normalised EMG amplitude as a fraction of the per-session maximum voluntary contraction (%MVC).
 - **Natural consequence:** while ramping up to a strong flex, the activation passes through the "light" band, so the keeper slides through R1 on the way to R2. Releasing the flex brings it back through R1 to C. This is intended and looks natural. A fast ramp that crosses the light band faster than the debounce time (§4.5) jumps straight to R2.
@@ -499,7 +514,10 @@ data/sessions/<YYYYMMDD_HHMMSS>_<participant>/
   events.csv         # t, type, name, json           (game events, marks, calibration steps, gaps)
   shots.csv          # one row per shot, fields from §3.9, on the bridge's clock and slots
   device_config.xml  # BioRadio only: the device's own configuration
+  latency.csv        # t, seq, rtt_ms: each keeper move's round trip (emg packet -> Unity's slot_applied), for E8
 ```
+
+`envelope.csv` also records the live filter `profile`; `calibration.json` holds thresholds for every profile; `events.csv` has every calibration and protocol step (type `protocol`, with its block, muscle, level and profile).
 
 Column details: `docs/SESSION_LOGS.md`. The game writes its own logs too (`docs/GAME_LOGS.md`); the bridge's are the authoritative copy because they share one clock with the raw EMG.
 
@@ -513,8 +531,10 @@ Keeper244/
   python/
     emg_bridge/
       sources/                base.py, simulated.py (+ players), replay.py, bioradio.py, fake_bioradio.py
-      dsp/                    filters.py (streaming SOS w/ state), envelope.py, features.py
-      control/                calibration.py, decision.py (state machine §4.5)
+      dsp/                    filters.py (streaming SOS w/ state), envelope.py, pipeline.py (profiles), features.py
+      control/                calibration.py, decision.py (state machine §4.5), protocol.py (timed blocks)
+      offline.py              any profile over any recording (same code as live)
+      simgame.py              the game's round loop without Unity (simulated sessions, tests)
       net/                    protocol.py, udp_out.py, udp_in.py
       io/                     recorder.py (session logging), shots.py (per-shot metrics)
       bridge.py               the real-time loop
@@ -522,9 +542,9 @@ Keeper244/
       main.py                 CLI: python -m emg_bridge run | calibrate | record | replay
     config.yaml
     tests/                    filters, envelope, decision, calibration, sources, shots, bridge (end to end), protocol, udp
-    tools/                    fake_sender.py (P3), bioradio_probe.py (P5 smoke test)
+    tools/                    fake_sender.py (P3), bioradio_probe.py (P5 smoke test), make_sim_session.py
     vendor/                   BioRadioSDK.dll from the course kit (git-ignored)
-    analysis/                 01_raw.ipynb ... 08_latency.ipynb (§7)
+    analysis/                 figures.py (all §7 figures), session.py (loader), explore.ipynb
   unity/Keeper244/
     Assets/Scripts/           EMGReceiver.cs, IInputProvider.cs, EMGInput.cs, KeyboardInput.cs,
                               GameManager.cs (round state machine), KeeperController.cs,
@@ -547,9 +567,16 @@ Keeper244/
   - A 50 ms spike produces no slot change (debounce works).
 - **End to end:** SimulatedSource → bridge → Unity. Pressing key "2" moves the keeper to R2. Killing the bridge triggers NO SIGNAL within 250 ms.
 
+### 5.7 Experiment tooling (built 2026-10-29 for the handout)
+
+- **Filter profiles** (`config.yaml` `profiles`, `dsp/pipeline.py`): `full` (band-pass 20–450 Hz + 50 Hz notch, 100 ms RMS; the default), `bandpass` (no notch), `raw` (DC removal only), `smooth` (250 ms RMS), `fast` (50 ms RMS). One runs live at a time (`--profile`, or `f` in the monitor); **one calibration recording gives thresholds for all of them** (each profile's envelope has its own scale), computed offline from the stored calibration samples (`offline.calibrate_profiles`). `offline.process()` runs any profile over any recording with exactly the live code.
+- **Protocol mode** (`python -m emg_bridge protocol`, `control/protocol.py`): calibration, then the §6 blocks with large prompts and countdowns in the monitor, profile switches at each game block, every step logged.
+- **Simulated sessions** (`tools/make_sim_session.py`): a stand-in for the game's round loop (`simgame.py`) plays the protocol against the simulator, so a complete 40-minute session folder is made in about a minute. Used to build and test the analysis; every figure made from it is stamped *SIMULATED*.
+- **Analysis** (`python -m analysis.figures <sessions>`, `analysis/`): 15 figures + `summary.md`/`summary.json` per session and a `combined/` comparison across participants; `analysis/explore.ipynb` for looking around.
+
 ---
 
-## 6. Data acquisition protocol (per participant, ~45 min)
+## 6. Data acquisition protocol (per participant, ~65 min with setup)
 
 1. **Device check.** Battery charged; fs set (≥ 1 kHz) and later verified from timestamps; both channels configured as EMG (bipolar). On a new laptop, run `tools/bioradio_probe.py` once first (docs/SETUP.md).
 2. **Skin prep.** Shave if needed; light abrasion with prep gel; alcohol wipe; let it dry.
@@ -560,17 +587,15 @@ Keeper244/
    - Mark the sites with a skin marker and photograph them (for the report and for repeat sessions). Tape the leads for strain relief.
 4. **Signal check.** Rest trace is flat with no 50 Hz dominance; a brief flex of each muscle gives a clear burst on its own channel; check how much appears on the other channel (crosstalk).
 5. **Posture:** as in §3.3.
-6. **Rest:** 30 s (longer than calibration rest, for the noise PSD).
-7. **MVC:** 3 × 5 s per muscle, ≥ 60 s rest between.
-8. **Graded holds:** 10, 20, 30, 50 % MVC with on-screen feedback, 5 s each, ×2. Used for amplitude-vs-effort and SNR-vs-level.
-9. **Comfort holds:** light ×3 and strong ×3 per muscle (calibration step 4).
-10. **Artifact trials** (labelled with the `mark` command):
-    - (a) cable tug
-    - (b) free elbow flexion/extension *without* resisting
-    - (c) tapping near an electrode
-    - (d) standing near a mains-powered device or laptop charger
-11. **Game:** L0 for 2 min, then L1, then L2, then L3, with ≥ 2 min rest between levels. Recalibrate if electrodes are touched.
-12. **Fatigue trial (optional, last):** sustained biceps hold at 50 % MVC for 60 s (or until the player can't hold it), or the Endurance mode.
+6. **Calibration** (§4.4, ~14 min including the 5-minute settle): `python -m emg_bridge protocol` runs it first, then gives thresholds for every filter profile.
+7. **Rest block — 5 min** relaxed (noise floor, PSD, random-process statistics).
+8. **Biceps block — 5 min**: 5 s flex / 5 s relax on cue, light and strong alternating (30 holds; amplitude vs effort, SNR, fatigue E7).
+9. **Triceps block — 5 min**: the same.
+10. **Game blocks — 5 min per filter profile**, playing **L2** (restart it when it ends): `full`, `raw`, `bandpass` (add `smooth` / `fast` if time allows). **Rotate the order** between participants so learning and fatigue don't favour one profile: P01 full→raw→bandpass, P02 raw→bandpass→full, P03 bandpass→full→raw, P04 full→raw→bandpass (`--game-profiles`).
+11. **Artifact trials (optional, ~3 min)** with `python -m emg_bridge record` and labelled marks: cable tug, free elbow flexion/extension, tapping near an electrode, standing near a mains-powered charger.
+12. **Extra play (optional)**: L1 → L3 for the 3-zone vs 5-zone comparison (E6), and the Endurance mode.
+
+All of steps 6–10 are one command with prompts in the monitor window; each block is ≥ 5 min, as the handout requires (key point 1). About **50 minutes per participant** plus 15 minutes of setup. **Film and photograph** the electrode placement, the setup, part of each block and the game (key point 2).
 
 **Data hygiene:**
 
@@ -627,12 +652,15 @@ $$
 | E1 | What noise is in the signal? | PSD of rest vs contraction; peaks at 50/100/150 Hz; artifact trials' spectra (< 20 Hz energy); check for periodic ~1 Hz ECG spikes; SNR per channel and per graded level | PSD plots, annotated noise table, SNR table | Signal analysis |
 | E2 | What do our filters do? | Magnitude/phase/group-delay plots of the band-pass and notch; before/after PSD; causal `sosfilt` vs zero-phase `sosfiltfilt` overlay; the notch's dent in true EMG | Filter-response figure, before/after figure | SSRP concepts |
 | E3 | Envelope latency vs smoothness | RMS W ∈ {50, 100, 200, 300} ms and LP f_c ∈ {2, 4, 6, 8} Hz. For each: onset delay vs the offline zero-phase reference, ripple (coefficient of variation during steady holds), false slot changes in the decision replay | Trade-off (Pareto) plot; justified final choice | SSRP + real-time |
-| E4 | Does filtering matter for control? | Replay the same recordings through the decision logic using (a) raw rectified, (b) band-pass only, (c) band-pass + notch, (d) full pipeline | False activations/min, chatter count, wrong-direction rate | Signal analysis, results |
+| E4 | **Does filtering change the game?** (handout key point 5) | **Live:** one 5-min L2 block per filter profile (`full` = band-pass + notch, `bandpass`, `raw` = DC removal only; `smooth`/`fast` = 250/50 ms RMS). **Offline:** the same biceps/triceps recording replayed through every profile with its own calibration | Live: save %, reaction time, first move wrong way, keeper moves/min. Offline: cue → slot delay, % correct side during holds, changes/min during holds, % off centre while relaxed (figures 10, 11) | Signal analysis, SSRP, game, results |
 | E5 | Crosstalk and co-activation | During single-muscle holds: a_t/a_b ratio and cross-correlation peak between channels | Justifies K = 1.5 (or a better value) | Signal analysis |
 | E6 | How well can people play? | L1 vs L2 vs L3 for 4 participants: save %, 5×5 confusion matrix (target vs achieved slot), reaction-time distribution, overshoot/undershoot rate, learning across attempts | Confusion matrices, bar charts, box plots | Game + results |
 | E7 | Fatigue | MDF/MNF vs time during the sustained hold (linear fit slope, Hz/s); MDF across the Endurance session; does save % drop? | MDF-vs-time plot, slope table | Signal analysis + SSRP |
 | E8 | End-to-end latency | Offline onset time (raw) → `slot` change time (bridge) → `slot_applied` echo (Unity); per-stage breakdown vs the §4.6 budget | Latency histogram + stacked budget bar | Real-time |
+| E10 | EMG as a random process | 5-min rest block: amplitude distribution vs Gaussian (kurtosis), autocorrelation (white vs 50 Hz periodic), stationarity (1 s RMS over time, first-half vs second-half variance); contraction EMG as amplitude-modulated noise | Figure 08, numbers in the summary | SSRP concepts |
 | E9 *(optional stretch)* | ML vs rules | 5-class classifier (LDA/SVM) on classic time-domain features (RMS, MAV, waveform length, zero crossings, slope sign changes) from both channels, compared with the threshold rule | Accuracy, confusion matrix, latency | SSRP (extension) |
+
+All figures come from `python -m analysis.figures <sessions>` (§5.7); each is a 16:9 PNG ready for the video, with its numbers in `summary.md`.
 
 **Fatigue pitfall worth stating in the report:** during sustained submaximal effort, the EMG amplitude needed for the *same force* tends to *rise* as the muscle fatigues, while the MDF falls. Over a long session a "light" flex can drift toward the far threshold. Mitigations: the rest gate, rest between levels, a cap on strong effort, and recalibration between levels.
 
@@ -665,7 +693,21 @@ The detailed plan lives in the "Keeper244 — Build Plan & Phases" doc. The game
 | P8 | 5-zone levels with real EMG + experiments (E4, E6, E7) | M6 |
 | P9 | Results + presentation | M7 |
 
+**Dated timeline to the 10 November deadline [PROPOSED 2026-10-29]:**
+
+| Dates | What |
+|---|---|
+| Oct 29–30 | Windows laptop: BioRadio probe (`tools/bioradio_probe.py`), Windows build, Rift S test |
+| Oct 31–Nov 2 | First full protocol session (1 participant); run `analysis.figures` the same day; fix anything that looks wrong |
+| Nov 3–6 | The other participants (one ~65-min session each), rotating the game-block order |
+| Nov 6–8 | All figures, combined results, choose the numbers for the video |
+| Nov 8–9 | Record and edit the ≤ 15-min video: sections (a)–(f), live VR demo, each member's part |
+| Nov 10 | Submit |
+
 ### 9.2 Suggested roles (team decides)
+
+The handout requires **every member in every stage**, so roles mean "leads and coordinates", not "only does". Rotate: each member is a participant once and the operator once, owns at least one analysis figure, and presents one part of the video. Section (f) of the video lists who did what.
+
 
 | Role | Owns |
 |---|---|
@@ -697,7 +739,7 @@ The detailed plan lives in the "Keeper244 — Build Plan & Phases" doc. The game
 2. **BioRadio — route answered (2026-10-28, course kit):** Windows + Bluetooth + `BioRadioSDK.dll` through `pythonnet` (§5.1); the lab has at least two units (AOP, AOO). **Still [OPEN]:** the exact model, the sample rates BioCapture offers, lab hours, and whether a unit can leave the lab. The probe reads the channels, fs, units and battery from the device itself.
 3. **Windows machine — answered:** three teammates are on Windows 11.
 4. **Unity / C# experience — answered:** the whole team has used Unity; AI-assisted game coding is allowed.
-5. **Deadlines and deliverables [OPEN]:** final demo date, report/slides format, whether a video is required, and any intermediate check-ins.
+5. **Deadlines and deliverables — answered (2026-10-29, handout):** due **10 November 2026**; a **≤ 15-min video** with sections (a)–(f) and a live VR demo (§1.1, Appendix E). No separate written report is mentioned; the handout ends with a Title / Objectives / Experimental Design / Results / Analysis / Conclusions outline, which the video slides follow.
 6. **Participants [OPEN]:** only team members, or others too? Is any consent/ethics form required by the course?
 
 ---
@@ -812,5 +854,14 @@ Link given for the Wii Balance Board in the guide: https://github.com/tomvredeve
 | Lab Streaming Layer (LSL) | https://labstreaminglayer.org | Only relevant if the BioRadio software supports LSL **[UNVERIFIED]** |
 | scipy.signal | `butter`, `iirnotch`, `sosfilt`, `sosfilt_zi`, `sosfiltfilt`, `welch`, `group_delay` | DSP functions used in this design |
 | Unity 6 releases | https://unity.com/unity-6-release | 6.3 LTS supported to Dec 2027; 6.0 LTS to Oct 2026 |
+
+## Appendix E: Project handout — key points (`SPRP_Project_2024_1.docx`, received 2026-10-29)
+
+- *Project: Signal System and Random Process.* Assigned October 2026, **due 10 November 2026**. Honor system, open materials, groups of 4.
+- **Video presentation, maximum 15 minutes:** (a) project statement and objectives; (b) experimental setup and data acquisition procedure; (c) signal processing concepts and techniques used; (d) VR game development and real-time signal integration; (e) results and analysis; (f) contribution of each group member. Appropriate figures, plots and tables with clear, detailed explanations. Demonstrate the VR game working and explain how the processed signals control virtual objects. "Please do all work very neatly and legibly."
+- Key points: (1) at least **5 minutes** of real-time signal **for each activity or experimental condition**; (2) photographs and videos of the setup, acquisition and VR game; (3) identify noise and apply suitable DSP: filtering, FFT, feature extraction; (4) a functional Unity-based VR game controlled by the processed signals; (5) **compare raw and processed signals** and evaluate the effect of signal processing on VR object movement, response time, accuracy and overall game performance; (6) every member actively participates in every stage.
+- Marking: data acquisition and experimental setup 20; signal analysis and noise identification 20; application of SSRP concepts and techniques 20; VR game development and real-time signal integration 20; result presentation 20.
+- **Project 15** (ours): *Real-Time EMG Signal Processing for Biceps and Triceps Muscle-Controlled VR Football Goalkeeping Using Unity.* Acquire real-time EMG from biceps and triceps, identify noise and unwanted fluctuations, design suitable filters to improve signal quality and the responsiveness of the virtual object; the processed EMG controls a virtual goalkeeper, "biceps activation moves the goalkeeper to the left and triceps activation moves the goalkeeper to the right" (we keep the opposite, §3.2), to block footballs from different directions; compare different filtering techniques and evaluate their effects on movement accuracy, response time and overall game performance.
+- The handout ends with an outline: Title, Objectives, Experimental Design, Results, Analysis, Conclusions.
 
 *End of brief.*

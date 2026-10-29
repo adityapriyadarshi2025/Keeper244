@@ -69,6 +69,7 @@ dist/
 data/sessions/*
 !data/sessions/.gitkeep
 data/probe/
+figures/
 
 # ---------- BioRadio SDK (course kit: keep within IITGN, never on GitHub) ----------
 python/vendor/*

@@ -61,6 +61,7 @@ class Calibration:
     created: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%S"))
     clip: tuple[float, float] = (0.0, 1.5)
     notes: list[str] = field(default_factory=list)
+    profile: str = "full"     # the filter profile whose envelope these numbers belong to
 
     @property
     def channels(self) -> tuple[ChannelCalibration, ChannelCalibration]:
@@ -92,7 +93,8 @@ class Calibration:
     def from_dict(cls, d: dict[str, Any]) -> "Calibration":
         return cls(biceps=ChannelCalibration(**d["biceps"]), triceps=ChannelCalibration(**d["triceps"]),
                    envelope_method=d.get("envelope_method", "rms"), units=d.get("units", "V"),
-                   created=d.get("created", ""), clip=tuple(d.get("clip", (0.0, 1.5))), notes=list(d.get("notes", [])))
+                   created=d.get("created", ""), clip=tuple(d.get("clip", (0.0, 1.5))), notes=list(d.get("notes", [])),
+                   profile=d.get("profile", "full"))
 
     def save(self, path: str | Path) -> Path:
         path = Path(path)
@@ -119,6 +121,57 @@ class Calibration:
                     line += "   !! " + ", ".join(flags)
             out.append(line)
         return out
+
+
+class CalibrationSet:
+    """One calibration per filter profile, all from the same calibration recording (each profile's
+    envelope has its own scale, so thresholds are not interchangeable). Saved as calibration.json:
+    {"active": "full", "profiles": {"full": {...}, "raw": {...}, ...}}. Older files that hold a
+    single calibration load as {"full": ...}."""
+
+    def __init__(self, profiles: dict[str, Calibration], active: str | None = None):
+        if not profiles:
+            raise ValueError("empty calibration set")
+        self.profiles = dict(profiles)
+        self.active = active if active in self.profiles else next(iter(self.profiles))
+
+    @classmethod
+    def single(cls, cal: Calibration) -> "CalibrationSet":
+        return cls({cal.profile: cal}, cal.profile)
+
+    @property
+    def names(self) -> list[str]:
+        return list(self.profiles)
+
+    def get(self, name: str) -> Calibration:
+        if name not in self.profiles:
+            raise KeyError(f"this calibration has no thresholds for filter profile '{name}' (it has {self.names}); "
+                           "calibrate again to get all profiles")
+        return self.profiles[name]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"active": self.active, "profiles": {n: c.to_dict() for n, c in self.profiles.items()}}
+
+    def save(self, path: str | Path) -> Path:
+        path = Path(path)
+        path.write_text(json.dumps(self.to_dict(), indent=2) + "\n", encoding="utf-8")
+        return path
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "CalibrationSet":
+        if "profiles" in d:
+            return cls({n: Calibration.from_dict({**c, "profile": n}) for n, c in d["profiles"].items()}, d.get("active"))
+        return cls.single(Calibration.from_dict(d))
+
+    @classmethod
+    def load(cls, path: str | Path) -> "CalibrationSet":
+        return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+def as_set(cal: "Calibration | CalibrationSet | None") -> "CalibrationSet | None":
+    if cal is None or isinstance(cal, CalibrationSet):
+        return cal
+    return CalibrationSet.single(cal)
 
 
 def moving_average_max(x: np.ndarray, n: int) -> float:

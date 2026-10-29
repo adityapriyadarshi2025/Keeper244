@@ -5,7 +5,8 @@
     python -m emg_bridge run --calibration last   # reuse the newest calibration, go straight to play
     python -m emg_bridge run --source bioradio --participant P01 --full-calibration   (Windows, real device)
     python -m emg_bridge calibrate --source bioradio --participant P01
-    python -m emg_bridge record --source bioradio --participant P01   # brief §6 protocol trials, no game
+    python -m emg_bridge protocol --source bioradio --participant P01 # calibration + timed 5-min blocks + games
+    python -m emg_bridge record --source bioradio --participant P01   # free-form labelled trials, no game
     python -m emg_bridge replay ../data/sessions/<folder> --speed 0    # re-run the DSP on a recording
 
 Every run writes a session folder under data/sessions/ (io/recorder.py). The live monitor opens
@@ -46,17 +47,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         sp.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
         sp.add_argument("--player", choices=["keys", "auto"], default="keys", help="sim: who flexes the simulated arm")
         sp.add_argument("--seed", type=int, default=244)
+        sp.add_argument("--profile", help="filter profile to start with (config.yaml profiles; f switches live)")
 
     for name, help_ in (("run", "calibrate (or load a calibration), then stream to Unity"),
-                        ("calibrate", "calibration only"), ("record", "record labelled protocol trials, no game")):
+                        ("protocol", "calibrate, then the timed 5-minute blocks (rest, biceps, triceps, games)"),
+                        ("calibrate", "calibration only"), ("record", "record labelled trials, no game")):
         sp = sub.add_parser(name, help=help_)
         common(sp)
-        if name in ("run", "calibrate"):
+        if name in ("run", "calibrate", "protocol"):
             sp.add_argument("--quick", action="store_true", help="~30 s calibration (simulator development)")
             sp.add_argument("--full-calibration", action="store_true", help="the full brief §4.4 calibration")
             sp.add_argument("--no-comfort", action="store_true", help="skip the light/strong holds (3-zone only)")
-        if name == "run":
+        if name in ("run", "protocol"):
             sp.add_argument("--calibration", help="calibration.json to use, or 'last' = this participant's newest")
+        if name == "protocol":
+            sp.add_argument("--game-profiles", help="order of the game blocks, e.g. raw,full,bandpass "
+                                                    "(rotate between participants; default from config.yaml)")
+            sp.add_argument("--blocks", help="only these conditions, e.g. rest,biceps (default: rest,biceps,triceps,game)")
+            sp.add_argument("--short", action="store_true", help="30 s blocks instead of 5 min (rehearsal only)")
         if name == "record":
             sp.add_argument("--calibration", help="optional: also log activations and slots")
 
@@ -64,6 +72,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     rp.add_argument("session", help="session folder (with raw.csv and meta.json)")
     rp.add_argument("--speed", type=float, default=1.0, help="1 = real time, 0 = as fast as possible")
     rp.add_argument("--calibration", help="calibration.json (default: the session's own)")
+    rp.add_argument("--profile", help="filter profile to process the recording with (default: config.yaml default)")
     rp.add_argument("--to-unity", action="store_true", help="send packets to the game (needs --speed 1)")
     rp.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
     rp.add_argument("--no-monitor", action="store_true")
@@ -102,7 +111,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     cfg = load_config(args.config)
     from .bridge import Bridge
-    from .control.calibration import Calibration, Procedure, build_steps
+    from .control.calibration import CalibrationSet, Procedure, build_steps
+    from .dsp.pipeline import profile_names
     from .io.recorder import Recorder, git_hash
     from .net.udp_in import EventReceiver
     from .net.udp_out import EmgSender
@@ -127,14 +137,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"bridge: no calibration found{who} ({cal_arg}). Run without --calibration to calibrate first.",
                   file=sys.stderr)
             return 2
-        calibration = Calibration.load(path)
+        calibration = CalibrationSet.load(path)
         log(f"calibration: {path}")
 
     if args.command == "replay":
         mode = "play" if calibration is not None else "record"
     elif args.command == "record":
         mode = "record"
-    elif args.command == "run" and calibration is not None:
+    elif args.command in ("run", "protocol") and calibration is not None:
         mode = "play"
     else:
         mode = "calibrate"
@@ -153,8 +163,24 @@ def main(argv: list[str] | None = None) -> int:
         log(f"calibration: {len(steps)} steps, ~{sum(s.seconds for s in steps):.0f} s"
             + (" (quick)" if quick else "") + ". Enter skips a wait.")
 
+    protocol = None
+    if args.command == "protocol":
+        from .control.protocol import ProtocolRunner, build_protocol
+        pcfg = dict(cfg["protocol"])
+        if args.short:
+            pcfg.update(rest_s=30, contraction_block_s=30, game_block_s=30, break_s=5)
+        order = [x.strip() for x in args.game_profiles.split(",")] if args.game_profiles else None
+        for prof in order or []:
+            if prof not in profile_names(cfg):
+                print(f"bridge: unknown filter profile '{prof}' in --game-profiles", file=sys.stderr)
+                return 2
+        blocks = [x.strip() for x in args.blocks.split(",")] if args.blocks else None
+        protocol = ProtocolRunner(build_protocol(pcfg, order, blocks))
+        log(f"protocol: {len(protocol.steps)} steps, {protocol.total_s / 60:.0f} min after calibration. "
+            "Enter skips a break.")
+
     net = cfg["network"]
-    to_unity = args.command == "run" or (args.command == "replay" and args.to_unity)
+    to_unity = args.command in ("run", "protocol") or (args.command == "replay" and args.to_unity)
     sender = EmgSender(net["host"], net["out_port"]) if to_unity else None
     events = None
     if to_unity:
@@ -185,15 +211,27 @@ def main(argv: list[str] | None = None) -> int:
         recorder.save_calibration(calibration)
     log(f"session: {recorder.dir}")
 
+    profile = getattr(args, "profile", None)
+    if profile is not None and profile not in profile_names(cfg):
+        print(f"bridge: unknown filter profile '{profile}'; config.yaml has {profile_names(cfg)}", file=sys.stderr)
+        return 2
+    if profile is not None and calibration is not None and profile not in calibration.names:
+        print(f"bridge: the calibration has no thresholds for profile '{profile}' (it has {calibration.names}); "
+              "calibrate again", file=sys.stderr)
+        return 2
     bridge = Bridge(cfg, source, mode=mode, calibration=calibration, procedure=procedure, sender=sender, events=events,
+                    profile=profile, protocol=protocol,
                     recorder=recorder, player=player, trials=RECORD_TRIALS if mode == "record" else None, log=log)
 
     def on_step(b: Bridge) -> None:
         if b.mode == "calibrate" and b.calibration_done:
             if b.calibration is None or args.command == "calibrate":
                 b.stop()
-            elif args.command == "run":
+            elif args.command in ("run", "protocol"):
                 b.enter_play()
+        if b.protocol is not None and b.protocol.done:
+            b.note("protocol complete")
+            b.stop()
         src = b.source
         if getattr(src, "finished", False):
             b.stop()
@@ -233,11 +271,11 @@ def _help(args, mode: str, player) -> str:
     if player is not None and hasattr(player, "KEYS"):
         from .sources.simulated import KEY_HELP
         keys.append("SIM: " + KEY_HELP)
-    if mode == "calibrate":
-        keys.append("Enter = skip a wait")
+    if mode == "calibrate" or args.command == "protocol":
+        keys.append("Enter = skip a wait or break")
     if mode == "record":
         keys.append("[ ] = choose trial   Enter = start / stop it")
-    keys.append("k = mark   x / Esc = quit")
+    keys.append("f = next filter profile   k = mark   x / Esc = quit")
     return "   ·   ".join(keys)
 
 
@@ -294,6 +332,8 @@ def _run_terminal(bridge, args, on_step, help_text: str) -> None:
         on_step(b)
         now = time.perf_counter()
         prompt = b.procedure.prompt(b.now()) if b.procedure is not None and not b.procedure.done else ""
+        if not prompt and b.protocol is not None and not b.protocol.done and b.mode == "play":
+            prompt = b.protocol.prompt(b.now())
         head = prompt.split("(")[0]
         if head and head != last["prompt"]:
             print(f"\n>>> {prompt}")

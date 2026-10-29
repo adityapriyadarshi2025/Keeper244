@@ -4,7 +4,7 @@ Every `python -m emg_bridge ...` run writes one folder:
 
 ```
 data/sessions/<YYYYMMDD_HHMMSS>_<participant>/
-  meta.json  calibration.json  raw.csv  chunks.csv  envelope.csv  events.csv  shots.csv  [device_config.xml]
+  meta.json  calibration.json  raw.csv  chunks.csv  envelope.csv  events.csv  shots.csv  latency.csv  [device_config.xml]
 ```
 
 `data/sessions/` is git-ignored: share recordings through Drive. The game writes its own logs (`docs/GAME_LOGS.md`); these are the authoritative copy for the analysis because the raw EMG, the decisions and the game events share **one clock**.
@@ -19,7 +19,7 @@ Participant, `arm`, `note` (electrode sites, posture...), `command` and `mode`, 
 
 ## calibration.json
 
-Per muscle (`biceps`, `triceps`): `mu_rest`, `sd_rest`, `e_mvc` (volts, envelope units), `sigma_n`, `th_on`, `th_off`, `th_far`, `a_light`, `a_strong`, and the two validation checks `light_ok`, `gap_ok` (brief §4.4). A run that reuses a calibration (`--calibration`) copies it here.
+`{"active": "full", "profiles": {"full": {...}, "bandpass": {...}, "raw": {...}, "smooth": {...}, "fast": {...}}}`: one calibration per **filter profile**, all computed from the same calibration recording (each profile's envelope has its own scale). Each has, per muscle (`biceps`, `triceps`): `mu_rest`, `sd_rest`, `e_mvc` (volts, envelope units), `sigma_n`, `th_on`, `th_off`, `th_far`, `a_light`, `a_strong`, and the two validation checks `light_ok`, `gap_ok` (brief §4.4). A run that reuses a calibration (`--calibration`) copies it here. Older files with a single calibration load as profile `full`.
 
 ## raw.csv — every sample
 
@@ -46,7 +46,8 @@ At 2000 Hz this is about 4 MB per minute.
 | `slot` | Decided slot −2…+2 (brief §4.5). The value sent to Unity |
 | `rest` | 1 = both muscles below θ_off (Unity's rest gate) |
 | `status` | `ok`, `no_data` (> 25 % of the window missing: the slot is held), `saturated`, `flatline` |
-| `seq` | The `emg` packet's sequence number (empty when not streaming). Join with Unity's `slot_applied` for latency (E8) |
+| `seq` | The `emg` packet's sequence number (empty when not streaming). Join with `latency.csv` (E8) |
+| `profile` | The filter profile live for this frame (`full`, `bandpass`, `raw`, `smooth`, `fast`) |
 
 ## events.csv
 
@@ -56,7 +57,13 @@ At 2000 Hz this is about 4 MB per minute.
 - `cmd` — `mark` from the game (M key).
 - `mark` — operator marks (`k`), BioRadio marker button (`bioradio_button`), and record-mode trials (`start:<trial>`, `stop:<trial>`).
 - `calibration` — each calibration step as it starts (`json`: muscle, seconds), then `done` or `failed`.
+- `protocol` — each protocol step as it starts (`ready`, `rest`, `flex`, `relax`, `break`, `game`; `json`: block, muscle, level, profile, seconds). A **block** (`rest`, `biceps`, `triceps`, `game_<profile>`) is the run of steps with the same block label; this is what the analysis cuts the recording by.
+- `profile` — the filter profile switched to (`json`: its settings).
 - `gap` — samples lost (`json`: from, to, lost). `status` — `source_silent` (no samples for 150 ms: the bridge stopped sending), `signal_back`, `play`.
+
+## latency.csv — one row per keeper move
+
+`t` (when Unity's `slot_applied` arrived), `seq` (the `emg` packet that moved the keeper), `rtt_ms` (packet sent → echo received: the game's share of the latency, E8).
 
 ## shots.csv — one row per shot
 

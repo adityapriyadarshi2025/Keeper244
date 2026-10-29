@@ -31,17 +31,27 @@ def design_notch(fs: float, f0_hz: float, q: float) -> np.ndarray:
     return signal.tf2sos(b, a)
 
 
+PASSTHROUGH = np.array([[1.0, 0.0, 0.0, 1.0, 0.0, 0.0]])  # one SOS section that changes nothing
+
+
 def design_chain(fs: float, filters_cfg: dict[str, Any]) -> np.ndarray:
-    """Band-pass followed by the configured notches, as one SOS cascade (config.yaml `filters`)."""
-    bp = filters_cfg["bandpass"]
-    high = min(float(bp["high_hz"]), 0.45 * fs)  # brief §4.2: lower the top edge if fs < 1000 Hz
-    sections = [design_bandpass(fs, float(bp["low_hz"]), high, int(bp["order"]))]
+    """The configured filters as one SOS cascade (config.yaml `filters`, or a profile's override):
+    an optional DC-removal high-pass, the band-pass (unless `enabled: false`), then the notches."""
+    sections = []
+    hp = filters_cfg.get("highpass", {})
+    if hp.get("enabled", False):
+        sections.append(signal.butter(int(hp.get("order", 1)), float(hp["cutoff_hz"]), btype="highpass", fs=fs,
+                                      output="sos"))
+    bp = filters_cfg.get("bandpass", {})
+    if bp and bp.get("enabled", True):
+        high = min(float(bp["high_hz"]), 0.45 * fs)  # brief §4.2: lower the top edge if fs < 1000 Hz
+        sections.append(design_bandpass(fs, float(bp["low_hz"]), high, int(bp["order"])))
     notch = filters_cfg.get("notch", {})
     if notch.get("enabled", False):
         for f0 in notch.get("freqs_hz", []):
             if f0 < fs / 2.0:
                 sections.append(design_notch(fs, float(f0), float(notch["q"])))
-    return np.vstack(sections)
+    return np.vstack(sections) if sections else PASSTHROUGH.copy()
 
 
 def zero_phase(x: np.ndarray, sos: np.ndarray) -> np.ndarray:

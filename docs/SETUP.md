@@ -213,12 +213,31 @@ It prints the device, its channels, units, sample rate and battery, then live RM
 
 If the probe says the DLL won't load: Unblock the file, and check .NET Framework 4.8 is installed (it is on Windows 10/11). If it finds no device: BioRadio on, Bluetooth on, BioCapture closed, device close to the laptop, scan again. Put the MAC it prints into `config.yaml` → `bioradio.mac` to skip scanning next time. If the channels come out swapped, set `bioradio.channels` (positions or BioCapture channel names).
 
-**Then the real thing:**
+**Then the real thing — one participant's session (brief §6, about 50 minutes):**
 
 ```powershell
-python -m emg_bridge record    --source bioradio --participant P01 --note "right arm, SENIAM sites"   # protocol trials (brief §6)
-python -m emg_bridge calibrate --source bioradio --participant P01
-python -m emg_bridge run       --source bioradio --participant P01 --calibration last                # play
+python -m emg_bridge protocol --source bioradio --participant P01 --note "right arm, SENIAM sites" --game-profiles full,raw,bandpass
 ```
 
+- It calibrates first (about 14 minutes, prompts in the monitor), then runs the blocks: 5 min rest, 5 min biceps on/off, 5 min triceps on/off, then 5 min of **L2** per filter profile. Each block's countdown is in the monitor.
+- **Before each game block**, the monitor says *Next: GAME with filters '…'*. The operator starts **L2** in the game and presses **Enter**. During the block, start L2 again whenever it ends.
+- Rotate `--game-profiles` between participants: P01 `full,raw,bandpass`, P02 `raw,bandpass,full`, P03 `bandpass,full,raw`, P04 `full,raw,bandpass`.
+- Film and photograph: electrode placement, the setup, part of each block, the game (handout key point 2).
+- Rehearse the whole thing without electrodes first: `python -m emg_bridge protocol --short` (simulator, 30 s blocks).
+- Other commands: `calibrate` (calibration only), `run --calibration last` (just play; `f` in the monitor switches filter profile), `record` (free-form labelled trials, e.g. artifacts).
+
 On the BioRadio, calibration is the full brief §4.4 sequence: about 14 minutes, of which 5 are the electrode settling time and 6 are rests between maximum contractions (Enter skips those waits). `--quick` is for the simulator only. Add `--fake-sdk` to any of these to rehearse on a Mac: a built-in fake BioRadio streams simulated EMG through the same code.
+
+## L. Analysis: figures for the video
+
+From `python/`, after a session (or several):
+
+```bash
+python -m analysis.figures ../data/sessions/<folder> [<folder> ...]
+```
+
+It writes `figures/<session>/01_…png` to `15_…png` (16:9, ready for slides) and `summary.md` with the numbers to quote, plus `figures/combined/` when you give it several participants. The list of figures and what each shows is at the top of `python/analysis/figures.py`; `python/analysis/explore.ipynb` is for looking around in one session.
+
+**Try it now, before any lab session:** `python tools/make_sim_session.py` makes a complete simulated 40-minute session in about a minute (game blocks included); run the figures on it. Every figure from simulated data is stamped *SIMULATED*: never put those in the video.
+
+`figures/` is git-ignored: share the final PNGs through Drive.

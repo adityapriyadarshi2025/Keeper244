@@ -180,6 +180,14 @@ class SimPlayer:
         else:
             self.schedule((0.0, 0.0))
 
+    def on_protocol_step(self, step) -> None:
+        """Act out a protocol prompt (control/protocol.py): flex on cue, relax otherwise."""
+        if step.kind == "flex" and step.muscle:
+            level = self.strong if step.level == "strong" else self.light
+            self.schedule((level, 0.0) if step.muscle == "biceps" else (0.0, level), delay=0.3)
+        elif step.kind != "game":
+            self.schedule((0.0, 0.0), delay=0.2)
+
     def on_calibration_done(self) -> None:
         self.calibrating = False
         self.schedule((0.0, 0.0))

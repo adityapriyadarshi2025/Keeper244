@@ -3,11 +3,12 @@
     data/sessions/<YYYYMMDD_HHMMSS>_<participant>/
       meta.json          participant, arm, sites, source + device info, fs nominal + measured,
                          config snapshot, git hash, run statistics (rewritten at the end)
-      calibration.json   thresholds per channel (when calibrated or loaded)
+      calibration.json   thresholds per channel, for every filter profile (when calibrated or loaded)
       raw.csv            n, t, biceps_uv, triceps_uv          every sample; NaN = missing
       chunks.csv         t_arrival, n0, n, dropped             one row per delivery from the source
-      envelope.csv       k, t, e_b_uv, e_t_uv, a_b, a_t, slot, rest, status, seq   100 Hz
-      events.csv         t, type, name, json                   game events, marks, gaps, calibration steps
+      envelope.csv       k, t, e_b_uv, e_t_uv, a_b, a_t, slot, rest, status, seq, profile   100 Hz
+      events.csv         t, type, name, json                   game events, marks, gaps, calibration/protocol steps
+      latency.csv        t, seq, rtt_ms                        emg packet -> Unity's slot_applied, per keeper move
       shots.csv          one row per shot (io/shots.py)
       device_config.xml  BioRadio only: the device's own configuration
 
@@ -31,7 +32,7 @@ import numpy as np
 
 from .shots import FIELDS as SHOT_FIELDS
 
-ENVELOPE_FIELDS = ["k", "t", "e_b_uv", "e_t_uv", "a_b", "a_t", "slot", "rest", "status", "seq"]
+ENVELOPE_FIELDS = ["k", "t", "e_b_uv", "e_t_uv", "a_b", "a_t", "slot", "rest", "status", "seq", "profile"]
 
 
 def git_hash(repo: Path) -> str | None:
@@ -104,6 +105,8 @@ class Recorder:
         self._ev_f = (self.dir / "events.csv").open("w", encoding="utf-8", newline="")
         self._ev = csv.writer(self._ev_f)
         self._ev.writerow(["t", "type", "name", "json"])
+        self._lat_f = (self.dir / "latency.csv").open("w", encoding="utf-8", newline="")
+        self._lat_f.write("t,seq,rtt_ms\n")
         self._shots_f = (self.dir / "shots.csv").open("w", encoding="utf-8", newline="")
         self._shots = csv.DictWriter(self._shots_f, fieldnames=SHOT_FIELDS)
         self._shots.writeheader()
@@ -127,14 +130,18 @@ class Recorder:
         self._fit.add(t_arrival, float(n0 + n))
 
     def envelope(self, k: int, t: float, e: np.ndarray, a: np.ndarray, slot: int, rest: bool, status: str,
-                 seq: int | None) -> None:
+                 seq: int | None, profile: str = "") -> None:
         a_b = "" if not np.isfinite(a[0]) else f"{a[0]:.4f}"
         a_t = "" if not np.isfinite(a[1]) else f"{a[1]:.4f}"
         self._env.writerow([k, f"{t:.5f}", f"{e[0] / 1e-6:.3f}", f"{e[1] / 1e-6:.3f}", a_b, a_t, slot, int(rest),
-                            status, "" if seq is None else seq])
+                            status, "" if seq is None else seq, profile])
 
     def event(self, t: float, kind: str, name: str, payload: dict[str, Any] | None = None) -> None:
         self._ev.writerow([f"{t:.5f}", kind, name, json.dumps(payload or {}, separators=(",", ":"))])
+
+    def latency(self, t: float, seq: int, rtt_s: float) -> None:
+        """One round trip: emg packet `seq` sent -> Unity's slot_applied for it (E8)."""
+        self._lat_f.write(f"{t:.5f},{seq},{rtt_s * 1000:.2f}\n")
 
     def shot(self, row: dict[str, Any]) -> None:
         self._shots.writerow(row)
@@ -146,7 +153,7 @@ class Recorder:
     def maybe_flush(self, every_s: float = 1.0) -> None:
         now = time.perf_counter()
         if now - self._last_flush >= every_s:
-            for f in (self._raw, self._chunks, self._env_f, self._ev_f):
+            for f in (self._raw, self._chunks, self._env_f, self._ev_f, self._lat_f):
                 f.flush()
             self._last_flush = now
 
@@ -166,7 +173,7 @@ class Recorder:
         fs_meas = self.fs_measured
         self.write_meta(ended_local=time.strftime("%Y-%m-%dT%H:%M:%S"), samples=self.samples,
                         fs_measured_hz=None if fs_meas is None else round(fs_meas, 3), stats=stats)
-        for f in (self._raw, self._chunks, self._env_f, self._ev_f, self._shots_f):
+        for f in (self._raw, self._chunks, self._env_f, self._ev_f, self._shots_f, self._lat_f):
             f.close()
 
 
