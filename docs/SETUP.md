@@ -129,6 +129,7 @@ Lab PCs run the built game; they don't need Unity.
 - **Keeper244 → Build Game → Windows (64-bit)**. Output: `unity/Keeper244/Builds/Windows/` (git-ignored). Copy or zip the **whole folder**, not just the `.exe`.
 - On a Mac this needs the **Windows Build Support (Mono)** module for 6000.3.26f1 (Hub → Installs → ⚙ → Add modules); the menu says so if it is missing. Teammates on Windows have it already.
 - On the lab PC: run `Keeper244.exe` and start the bridge (or `fake_sender.py`) on the same PC. The game listens on 127.0.0.1 only, so Windows Firewall does not prompt. Logs: `%USERPROFILE%\AppData\LocalLow\Team20\Keeper244\sessions`.
+- The build opens as a **1280×720 resizable window** so the bridge monitor fits beside it; **Alt+Enter** toggles full screen. The Windows build uses **Direct3D 11** (the API Unity's OpenXR docs list for Oculus PC + Link); the build menu sets both, so `ProjectSettings.asset` may show a change after the first build: commit it.
 - **Build Game → macOS** makes a Mac app the same way (demos).
 
 ## I. VR: Oculus Rift S

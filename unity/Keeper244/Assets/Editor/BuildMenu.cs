@@ -2,6 +2,7 @@ using System.IO;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Keeper244.EditorTools
 {
@@ -40,6 +41,21 @@ namespace Keeper244.EditorTools
             // the game must keep running (and receiving UDP) while the Python window has focus
             PlayerSettings.runInBackground = true;
             PlayerSettings.visibleInBackground = true;
+
+            // a resizable window, so the operator sees the bridge monitor beside it (Alt+Enter = full screen)
+            PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
+            PlayerSettings.defaultScreenWidth = 1280;
+            PlayerSettings.defaultScreenHeight = 720;
+            PlayerSettings.resizableWindow = true;
+            PlayerSettings.allowFullscreenSwitch = true;
+
+            // Unity's OpenXR docs list DX11 as the preferred graphics API for Oculus PC + Link (the Rift S)
+            if (target == BuildTarget.StandaloneWindows64)
+            {
+                PlayerSettings.SetUseDefaultGraphicsAPIs(target, false);
+                PlayerSettings.SetGraphicsAPIs(target, new[] { GraphicsDeviceType.Direct3D11 });
+            }
+            AssetDatabase.SaveAssets();
 
             string outDir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Builds", folder));
             var options = new BuildPlayerOptions
