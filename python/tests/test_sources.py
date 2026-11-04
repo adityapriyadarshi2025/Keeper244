@@ -195,3 +195,41 @@ def test_helpers():
     assert normalise_mac("ec:fe:7e-18 36af") == "ECFE7E1836AF"
     assert unit_scale("µV") == (1e-6, True) and unit_scale("mV") == (1e-3, True)
     assert unit_scale("furlongs") == (1.0, False)
+
+
+def test_bioradio_scans_before_connecting_and_retries():
+    """Windows refused a direct connect ("unreachable network") on 2026-11-04; the kit scans first."""
+    sdk = FakeBioRadioSdk(clock=FakeClock())
+    calls, fails = [], [2]
+    mgr_cls = sdk.DeviceManager
+
+    class Flaky(mgr_cls):
+        def DiscoverBluetoothDevices(self):  # noqa: N802
+            calls.append("scan")
+            return super().DiscoverBluetoothDevices()
+
+        def GetBluetoothDevice(self, mac):  # noqa: N802
+            calls.append("connect")
+            if fails[0]:
+                fails[0] -= 1
+                raise RuntimeError("Unable to connect to specified address. ---> unreachable network")
+            return super().GetBluetoothDevice(mac)
+
+    sdk.DeviceManager = Flaky
+    src = BioRadioSource({**CFG["bioradio"], "connect_attempts": 3}, sdk=sdk, clock=sdk.clock,
+                         mac="ECFE7E1836AF", log=lambda *_: None)
+    src.connect()
+    assert calls == ["scan", "connect", "connect", "connect"]
+
+
+def test_bioradio_gives_up_with_a_clear_message():
+    sdk = FakeBioRadioSdk(clock=FakeClock())
+
+    class Refuses(sdk.DeviceManager):
+        def GetBluetoothDevice(self, mac):  # noqa: N802
+            raise RuntimeError("unreachable network")
+
+    sdk.DeviceManager = Refuses
+    with pytest.raises(BioRadioError, match="after 2 attempts"):
+        BioRadioSource({**CFG["bioradio"], "connect_attempts": 2}, sdk=sdk, clock=sdk.clock,
+                       log=lambda *_: None).connect()

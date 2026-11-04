@@ -111,11 +111,13 @@ simulator:                     # SimulatedSource (brief §5.2): hardware-free de
 
 bioradio:                      # BioRadioSource (Windows only; brief §5.1)
   sdk_dll: vendor/BioRadioSDK.dll   # relative to python/; NOT in git (course kit, keep within IITGN)
-  mac: null                    # e.g. "ECFE7E1836AF"; null = scan and pick the first BioRadio found
+  mac: null                    # e.g. "ECFE7E1836BF" (AOO); null = the first BioRadio the scan finds
   channels:                    # which enabled biopotential channel is which muscle
     biceps: 1                  # 1-based position in BioCapture's enabled channel list, or the channel name
     triceps: 2
   poll_ms: 5                   # how often the bridge drains the SDK buffers
+  connect_attempts: 3          # the bridge always scans first (like the kit), then retries the connect
+  connect_wait_s: 2.0          # pause before each attempt: lets the radio finish the scan / drop a stale link
 
 protocol:                      # python -m emg_bridge protocol (brief §6): >= 5 min per condition (handout)
   ready_s: 5
