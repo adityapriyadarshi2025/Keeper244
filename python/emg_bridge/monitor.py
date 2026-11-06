@@ -134,6 +134,11 @@ def run_monitor(bridge, title: str, help_text: str, run_kwargs: dict | None = No
             if s["silent"]:
                 prompt = "NO SAMPLES from the source · Unity shows NO SIGNAL"
             self.prompt.setText(prompt or s["mode"])
+            alarm = s.get("warnings") or prompt.startswith("CALIBRATION PROBLEM") or s["silent"]
+            style = "color: #ff5a4f;" if alarm else ""
+            if style != getattr(self, "_prompt_style", None):
+                self.prompt.setStyleSheet(style)
+                self._prompt_style = style
             fs_m = s["fs_measured"]
             line = bridge.status_line()
             if fs_m:

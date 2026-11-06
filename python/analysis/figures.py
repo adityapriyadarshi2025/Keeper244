@@ -867,13 +867,20 @@ def combined(summaries: list[dict], out: Path) -> None:
     fig, axes = plt.subplots(1, len(metrics), figsize=style.WIDE)
     profs = ordered(df["profile"])
     for ax, (col, lab) in zip(axes, metrics):
-        g = df.groupby("profile", sort=False)[col]
+        vals = pd.to_numeric(df[col], errors="coerce") if col in df else pd.Series(np.nan, index=df.index)
+        g = vals.groupby(df["profile"], sort=False)
         mean, sd = g.mean().reindex(profs), g.std().reindex(profs)
-        ax.bar(profs, mean, yerr=sd.fillna(0), color=[style.profile_color(p) for p in profs], width=0.6,
+        xs = np.arange(len(profs))
+        ax.bar(xs, mean.fillna(0).to_numpy(), yerr=sd.fillna(0).to_numpy(),
+               color=[style.profile_color(p) for p in profs], width=0.6,
                edgecolor=style.SURFACE, lw=2, capsize=4, ecolor=style.INK_2)
         for p_i, p in enumerate(profs):
-            pts = df[df["profile"] == p][col].to_numpy()
-            ax.scatter(np.full(len(pts), p_i), pts, color=style.INK, s=12, zorder=5)
+            pts = vals[df["profile"] == p].dropna().to_numpy(dtype=float)
+            if len(pts):
+                ax.scatter(np.full(len(pts), p_i), pts, color=style.INK, s=12, zorder=5)
+        if mean.isna().all():
+            ax.text(0.5, 0.5, "not recorded", transform=ax.transAxes, ha="center", va="center", color=style.INK_3)
+        ax.set_xticks(xs, profs)
         ax.set_title(lab, fontsize=10)
         ax.grid(axis="x", visible=False)
     sim = any(sm["simulated"] for sm in summaries)

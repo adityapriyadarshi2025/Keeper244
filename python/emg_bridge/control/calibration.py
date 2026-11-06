@@ -274,10 +274,11 @@ def build_steps(cfg: dict[str, Any], comfort: bool = True, quick: bool = False) 
     steps: list[Step] = []
     if c.get("settle_s", 0) > 0:
         steps.append(Step("settle", c["settle_s"], "Electrodes on: let the gel settle (press Enter to skip)", skippable=True))
-    steps.append(Step("ready", c.get("ready_s", 3), "Next: REST. Relax your arm completely"))
-    steps.append(Step("rest", c["rest_s"], "REST: relax completely", segment="rest"))
+    steps.append(Step("ready", c.get("ready_s", 3), "Next: REST. Relax both arms completely"))
+    steps.append(Step("rest", c["rest_s"], "REST: relax completely, do not move", segment="rest"))
     for m in MUSCLES:
-        action = "push UP (biceps)" if m == "biceps" else "push DOWN (triceps)"
+        action = ("bend the elbow against resistance (biceps arm)" if m == "biceps"
+                  else "straighten the elbow against resistance (triceps arm)")
         for i in range(int(c["mvc_trials"])):
             steps.append(Step("ready", c.get("ready_s", 3), f"Next: MAXIMUM {m.upper()} {i + 1}/{c['mvc_trials']}: {action}", m))
             steps.append(Step("mvc", c["mvc_trial_s"], f"MAXIMUM {m.upper()}: {action} as hard as you can!", m, f"mvc_{m}"))
@@ -288,7 +289,8 @@ def build_steps(cfg: dict[str, Any], comfort: bool = True, quick: bool = False) 
         for m in MUSCLES:
             for level in ("light", "strong"):
                 for i in range(int(c["comfort_trials"])):
-                    how = "LIGHT (comfortable, easy)" if level == "light" else "STRONG (about half of maximum)"
+                    how = ("LIGHT: a gentle squeeze, about 1/4 of your maximum" if level == "light"
+                           else "STRONG: firm, about 2/3 of your maximum, clearly harder than light")
                     steps.append(Step("ready", c.get("ready_s", 3), f"Next: {m.upper()} {how} {i + 1}/{c['comfort_trials']}", m))
                     steps.append(Step(level, c["comfort_trial_s"], f"HOLD {m.upper()} {how}", m, f"{level}_{m}"))
                     if c.get("comfort_rest_s", 0) > 0:

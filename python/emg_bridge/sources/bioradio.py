@@ -168,40 +168,57 @@ class BioRadioSource(EMGSource):
         if self.manager is None:
             self.manager = sdk.DeviceManager()
         mac = self.mac
-        # Always scan first, like the course kit does (Scan, then Connect): on Windows a direct
-        # connect to an address the Bluetooth stack has not just discovered can fail with
-        # "a socket operation was attempted to an unreachable network" (seen on 2026-11-04).
+        # Every attempt scans, then connects (the course kit's Scan + Connect). On Windows a connect
+        # to an address the Bluetooth stack has not just discovered fails with "unreachable network",
+        # and after a program exits the BioRadio can refuse the next link for a while ("socket had
+        # already been shut down"): switching the BioRadio off and on clears that (2026-11-04).
         real = getattr(sdk, "kind", "") == "dotnet"
-        self.log("bioradio: scanning for devices...")
-        found = self.discover()
-        if not mac:
-            if not found:
-                raise BioRadioError("no BioRadio found: power it on, check Bluetooth, keep it close, close BioCapture "
-                                    "and any other program or laptop using it, try again")
-            name, mac = found[0]
-        else:
-            name = next((d for d, m in found if m == mac), None)
-            if name is None:
-                self.log(f"bioradio: {mac} was not in the scan ({found or 'nothing found'}); trying to connect anyway")
-        self.log(f"bioradio: found {', '.join(f'{d} ({m})' for d, m in found) or 'nothing'}; connecting to {name or mac}...")
-        attempts = int(self.cfg.get("connect_attempts", 3))
+        attempts = int(self.cfg.get("connect_attempts", 5))
         wait = float(self.cfg.get("connect_wait_s", 2.0)) if real else 0.0
+        cycle_after = int(self.cfg.get("power_cycle_after", 2))
+        cycle_wait = float(self.cfg.get("power_cycle_wait_s", 20.0)) if real else 0.0
         last: Exception | None = None
+        name = None
         for attempt in range(1, attempts + 1):
-            time.sleep(wait)  # let the radio finish the scan / drop a half-open link before connecting
+            if attempt > 1 and attempt - 1 == cycle_after:
+                self.log(f"bioradio: >>> switch the BioRadio OFF, wait 5 s, switch it ON again. "
+                         f"Retrying in {cycle_wait:.0f} s ...")
+                time.sleep(cycle_wait)
+            self.manager = sdk.DeviceManager()   # a fresh manager each attempt
+            self.log("bioradio: scanning for devices..." if attempt == 1 else f"bioradio: attempt {attempt}/{attempts}: scanning...")
             try:
-                self.device = self.manager.GetBluetoothDevice(int(mac, 16))
+                found = self.discover()
+            except Exception as e:  # noqa: BLE001 - .NET exceptions
+                found, last = [], e
+                self.log(f"bioradio: scan failed: {str(e).split('--->')[0].strip()}")
+            target = mac
+            if not target:
+                if not found:
+                    self.log("bioradio: no BioRadio found (is it on? Bluetooth on? BioCapture closed?)")
+                    time.sleep(wait)
+                    continue
+                name, target = found[0]
+            else:
+                name = next((d for d, m in found if m == target), None)
+                if name is None:
+                    self.log(f"bioradio: {target} was not in the scan ({found or 'nothing found'}); trying anyway")
+            self.log(f"bioradio: found {', '.join(f'{d} ({m})' for d, m in found) or 'nothing'}; connecting to {name or target}...")
+            time.sleep(wait)  # let the radio finish the scan before connecting
+            try:
+                self.device = self.manager.GetBluetoothDevice(int(target, 16))
+                mac = target
                 break
             except Exception as e:  # noqa: BLE001 - .NET exceptions
                 last = e
-                first = str(e).split("--->")[0].strip()
-                self.log(f"bioradio: connect attempt {attempt}/{attempts} failed: {first}")
+                self.log(f"bioradio: connect attempt {attempt}/{attempts} failed: {str(e).split('--->')[0].strip()}")
         else:
+            if last is None:
+                raise BioRadioError("no BioRadio found: power it on, check Bluetooth, keep it close, close BioCapture "
+                                    "and any other program or laptop using it, try again")
             raise BioRadioError(
-                f"could not connect to BioRadio {mac} after {attempts} attempts: {last}.\n"
-                "The BioRadio refused the link. Usually something else still holds it: close BioCapture and the kit "
-                "window (or any other laptop connected to it), turn the laptop's Bluetooth off and on, turn the "
-                "BioRadio off for 10 s, then try again.") from last
+                f"could not connect to the BioRadio after {attempts} attempts: {str(last).split('--->')[0].strip()}\n"
+                "Something still holds its link: close BioCapture and the kit window (and any other laptop using it), "
+                "switch the BioRadio off and on, and try again. If it still fails, restart the laptop.") from last
         self.mac = mac
         group = self.device.BioPotentialSignals
         count = int(group.Count)
@@ -297,8 +314,17 @@ class BioRadioSource(EMGSource):
             self.device.Disconnect()
         except Exception as e:
             self.log(f"bioradio: disconnect: {e}")
+        dispose = getattr(self.device, "Dispose", None)
+        if callable(dispose):
+            try:
+                dispose()
+            except Exception:  # noqa: BLE001
+                pass
         self.acquiring = False
         self.device = None
+        self.manager = None
+        if getattr(self.sdk, "kind", "") == "dotnet":
+            time.sleep(float(self.cfg.get("disconnect_wait_s", 1.5)))  # let the link close before we exit
 
     def read(self) -> Chunk:
         now = self.clock()

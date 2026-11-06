@@ -170,6 +170,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.short:
             pcfg.update(rest_s=30, contraction_block_s=30, game_block_s=30, break_s=5)
         order = [x.strip() for x in args.game_profiles.split(",")] if args.game_profiles else None
+        if order is None:   # rotate the game order with the participant number, so learning doesn't favour one filter
+            base = list(pcfg.get("game_profiles", ["full", "raw", "bandpass"]))
+            digits = "".join(ch for ch in str(args.participant) if ch.isdigit())
+            k = int(digits) % len(base) if digits and base else 0
+            order = base[k:] + base[:k]
         for prof in order or []:
             if prof not in profile_names(cfg):
                 print(f"bridge: unknown filter profile '{prof}' in --game-profiles", file=sys.stderr)
@@ -177,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
         blocks = [x.strip() for x in args.blocks.split(",")] if args.blocks else None
         protocol = ProtocolRunner(build_protocol(pcfg, order, blocks))
         log(f"protocol: {len(protocol.steps)} steps, {protocol.total_s / 60:.0f} min after calibration. "
-            "Enter skips a break.")
+            f"Game order: {', '.join(order)}. Enter skips a break.")
 
     net = cfg["network"]
     to_unity = args.command in ("run", "protocol") or (args.command == "replay" and args.to_unity)
@@ -224,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
                     recorder=recorder, player=player, trials=RECORD_TRIALS if mode == "record" else None, log=log)
 
     def on_step(b: Bridge) -> None:
-        if b.mode == "calibrate" and b.calibration_done:
+        if b.mode == "calibrate" and b.calibration_done:   # clean, or accepted with g (bad ones wait for r/h/g)
             if b.calibration is None or args.command == "calibrate":
                 b.stop()
             elif args.command in ("run", "protocol"):
@@ -273,6 +278,8 @@ def _help(args, mode: str, player) -> str:
         keys.append("SIM: " + KEY_HELP)
     if mode == "calibrate" or args.command == "protocol":
         keys.append("Enter = skip a wait or break")
+    if mode == "calibrate" or args.command == "run":
+        keys.append("r = redo calibration   h = redo light/strong holds   g = accept a calibration with problems")
     if mode == "record":
         keys.append("[ ] = choose trial   Enter = start / stop it")
     keys.append("f = next filter profile   k = mark   x / Esc = quit")

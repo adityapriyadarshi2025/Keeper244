@@ -56,7 +56,8 @@ At 2000 Hz this is about 4 MB per minute.
 - `event` — every message from the game (`level_start`, `shot_cue`, `kick`, `arrival`, `level_end`, `shot_void`) with its fields in `json`. `slot_applied` (100+ per second) is not logged; its round trip summary is in `meta.json`.
 - `cmd` — `mark` from the game (M key).
 - `mark` — operator marks (`k`), BioRadio marker button (`bioradio_button`), and record-mode trials (`start:<trial>`, `stop:<trial>`).
-- `calibration` — each calibration step as it starts (`json`: muscle, seconds), then `done` or `failed`.
+- `calibration` — each calibration step as it starts (`json`: muscle, seconds), then `done` or `failed`; `problems` (electrode or light/strong checks failed, the bridge waited), `redo` (r or h; `json.what`), `accepted` (g).
+- `electrode` — `warning` / `ok` while running (`json`: muscle, kind = `flat` or `sat`): a lead off or an electrode at the device's limit for ≥ 1 s. Cut these spans out of the analysis.
 - `protocol` — each protocol step as it starts (`ready`, `rest`, `flex`, `relax`, `break`, `game`; `json`: block, muscle, level, profile, seconds). A **block** (`rest`, `biceps`, `triceps`, `game_<profile>`) is the run of steps with the same block label; this is what the analysis cuts the recording by.
 - `profile` — the filter profile switched to (`json`: its settings).
 - `gap` — samples lost (`json`: from, to, lost). `status` — `source_silent` (no samples for 150 ms: the bridge stopped sending), `signal_back`, `play`.

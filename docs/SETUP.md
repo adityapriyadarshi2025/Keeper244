@@ -212,7 +212,7 @@ python tools\bioradio_probe.py                  # connects, records 30 s; flex b
 
 It prints the device, its channels, units, sample rate and battery, then live RMS values (they should jump on the channel you flex), and finally a report with `[ok]` / `[!!]` checks: measured fs within 0.5 % of nominal, no dropped packets, delivery gaps, signal present, not saturated. Everything is saved under `data/probe/<time>/`. Send that folder (or just `report.txt` + `info.json`) back so we can tune the bridge.
 
-If the probe says the DLL won't load: Unblock the file, and check .NET Framework 4.8 is installed (it is on Windows 10/11). If it finds no device: BioRadio on, Bluetooth on, BioCapture closed, device close to the laptop, scan again. Put the MAC it prints into `config.yaml` → `bioradio.mac` to skip scanning next time. If the channels come out swapped, set `bioradio.channels` (positions or BioCapture channel names).
+If the probe says the DLL won't load: Unblock the file, and check .NET Framework 4.8 is installed (it is on Windows 10/11). If it finds no device: BioRadio on, Bluetooth on, BioCapture closed, device close to the laptop, scan again. Leave `bioradio.mac` empty: every connect scans first, like the kit (connecting without a fresh scan fails on Windows). If the channels come out swapped, set `bioradio.channels` (positions or BioCapture channel names).
 
 **Then the real thing — one participant's session (brief §6, about 50 minutes):**
 
@@ -226,6 +226,19 @@ python -m emg_bridge protocol --source bioradio --participant P01 --note "right 
 - Film and photograph: electrode placement, the setup, part of each block, the game (handout key point 2).
 - Rehearse the whole thing without electrodes first: `python -m emg_bridge protocol --short` (simulator, 30 s blocks).
 - Other commands: `calibrate` (calibration only), `run --calibration last` (just play; `f` in the monitor switches filter profile), `record` (free-form labelled trials, e.g. artifacts).
+
+**Connecting (lessons from 4 Nov):** only one program can hold the BioRadio. Close BioCapture and the kit window first. The bridge scans and connects up to 5 times; after 2 failures it asks you to **switch the BioRadio off and on** and waits 20 s. If all attempts fail, restart the laptop. Always stop with **x** (never close PowerShell or kill the process): a clean stop releases the link for the next person.
+
+**Keys during calibration** (shown at the bottom of the monitor):
+
+| Key | What it does |
+|---|---|
+| Enter | skip a wait (gel settle, rests between maximums) |
+| **r** | redo the whole calibration (no settle wait). Also works in `run` while playing, e.g. after fixing an electrode |
+| **h** | redo only the light / strong holds (keeps rest and maximums) |
+| **g** | accept a calibration that has a problem and play anyway |
+
+A calibration with a problem is **not** used automatically: the monitor turns red with `CALIBRATION PROBLEM: …` and waits for h / r / g. Problems: an electrode flat or at the device's limit during rest or a maximum (lead off: fix it, then **r**), or light and strong too similar (press **h**: light = a gentle squeeze, about 1/4 effort; strong = firm, about 2/3, clearly harder). During play, a lead that comes off shows a red **⚠ BICEPS … electrode loose?** line within a second; fix it, then **r** in `run`.
 
 On the BioRadio, calibration is the full brief §4.4 sequence: about 14 minutes, of which 5 are the electrode settling time and 6 are rests between maximum contractions (Enter skips those waits). `--quick` is for the simulator only. Add `--fake-sdk` to any of these to rehearse on a Mac: a built-in fake BioRadio streams simulated EMG through the same code.
 

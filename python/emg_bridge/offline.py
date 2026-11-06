@@ -97,3 +97,37 @@ def calibrate_profiles(x: np.ndarray, n0: int, fs: float, cfg: dict[str, Any], s
     if not cals:
         return None, errors
     return CalibrationSet(cals, active or default_profile(cfg)), errors
+
+
+def electrode_problems(x: np.ndarray, n0: int, fs: float, steps: list[Step], starts: list[int], end: int,
+                       names: list[str], sat_level: float | None, flat_uv: float = 0.5) -> list[str]:
+    """Lead-off checks on the raw calibration recording (seen on 2026-11-04: a triceps lead read a
+    constant value through REST and the first MVCs, and the calibration silently came out wrong).
+
+    For every recorded step (rest, mvc, light, strong) and channel: a flat signal (raw SD below
+    `flat_uv` µV) or more than 1 % of samples at the device's limit means the electrode or its lead
+    was off. Returns one message per channel and problem, e.g. "triceps: flat (lead off?) during rest, mvc 1".
+    """
+    x = np.asarray(x, dtype=float)
+    bounds = list(starts) + [end]
+    found: dict[tuple[str, str], list[str]] = {}
+    count: dict[str, int] = {}
+    for i, step in enumerate(steps):
+        if step.segment is None or i + 1 >= len(bounds):
+            continue
+        a, b = max(0, bounds[i] - n0), max(0, min(len(x), bounds[i + 1] - n0))
+        if b - a < max(10, int(0.5 * fs)):
+            continue
+        key = f"{step.kind} {step.muscle or ''}".strip()
+        count[key] = count.get(key, 0) + 1
+        label = step.kind if step.kind == "rest" else f"{key} {count[key]}"
+        for c, name in enumerate(names[:x.shape[1]]):
+            seg = x[a:b, c]
+            seg = seg[np.isfinite(seg)]
+            if len(seg) < 10:
+                continue
+            if sat_level is not None and np.mean(np.abs(seg) >= sat_level) > 0.01:
+                found.setdefault((name, "at the device's limit (electrode loose?)"), []).append(label)
+            elif np.std(seg) < flat_uv * 1e-6:
+                found.setdefault((name, "flat signal (lead off?)"), []).append(label)
+    return [f"{name}: {what} during {', '.join(where)}" for (name, what), where in found.items()]

@@ -78,6 +78,8 @@ status:                        # sensor status sent in every packet (brief §4.7
   saturation_fraction: 0.995   # a raw sample beyond 99.5 % of the device range counts as saturated
   flatline_uv: 0.5             # filtered envelope below this (µV) for flatline_s = lead off
   flatline_s: 1.0
+  electrode_flat_uv: 0.2        # one channel's envelope below this ... (a lead that is off reads ~0; real rest is 0.6-3 µV)
+  electrode_warn_s: 1.0         # ... or at the device limit for this long -> live warning + 'electrode' event
   no_data_gap_s: 0.150         # source silent this long: log a gap and stop sending (Unity shows NO SIGNAL)
   max_missing_fraction: 0.25   # an envelope window with more missing samples is not trusted (status no_data)
 
@@ -116,8 +118,11 @@ bioradio:                      # BioRadioSource (Windows only; brief §5.1)
     biceps: 1                  # 1-based position in BioCapture's enabled channel list, or the channel name
     triceps: 2
   poll_ms: 5                   # how often the bridge drains the SDK buffers
-  connect_attempts: 3          # the bridge always scans first (like the kit), then retries the connect
+  connect_attempts: 5          # each attempt scans again (like the kit's Scan + Connect), then connects
   connect_wait_s: 2.0          # pause before each attempt: lets the radio finish the scan / drop a stale link
+  power_cycle_after: 2         # after this many failures: ask the operator to switch the BioRadio off and on ...
+  power_cycle_wait_s: 20       # ... and wait this long before the next attempt
+  disconnect_wait_s: 1.5       # after Disconnect(): let the link close before the program exits (avoids a stale link)
 
 protocol:                      # python -m emg_bridge protocol (brief §6): >= 5 min per condition (handout)
   ready_s: 5

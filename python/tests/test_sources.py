@@ -219,7 +219,7 @@ def test_bioradio_scans_before_connecting_and_retries():
     src = BioRadioSource({**CFG["bioradio"], "connect_attempts": 3}, sdk=sdk, clock=sdk.clock,
                          mac="ECFE7E1836AF", log=lambda *_: None)
     src.connect()
-    assert calls == ["scan", "connect", "connect", "connect"]
+    assert calls == ["scan", "connect"] * 3   # every attempt scans again, like the kit's Scan + Connect
 
 
 def test_bioradio_gives_up_with_a_clear_message():
@@ -230,6 +230,6 @@ def test_bioradio_gives_up_with_a_clear_message():
             raise RuntimeError("unreachable network")
 
     sdk.DeviceManager = Refuses
-    with pytest.raises(BioRadioError, match="after 2 attempts"):
+    with pytest.raises(BioRadioError, match="after 2 attempts"):  # noqa: PT011
         BioRadioSource({**CFG["bioradio"], "connect_attempts": 2}, sdk=sdk, clock=sdk.clock,
                        log=lambda *_: None).connect()

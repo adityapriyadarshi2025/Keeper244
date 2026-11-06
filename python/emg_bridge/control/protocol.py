@@ -17,7 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-MUSCLE_ACTION = {"biceps": "push UP (biceps)", "triceps": "push DOWN (triceps)"}
+MUSCLE_ACTION = {"biceps": "bend the elbow against resistance (biceps arm)",
+                 "triceps": "straighten the elbow against resistance (triceps arm)"}
 
 
 @dataclass
@@ -63,7 +64,7 @@ def build_protocol(cfg: dict[str, Any], game_profiles: list[str] | None = None,
                                   f"{MUSCLE_ACTION[m]} when told, relax in between", block=None, muscle=m))
         for i in range(n):
             lv = levels[i % len(levels)]
-            how = "LIGHT (easy)" if lv == "light" else "STRONG (about half of maximum)"
+            how = "LIGHT (gentle, about 1/4 effort)" if lv == "light" else "STRONG (firm, about 2/3 effort)"
             steps.append(ProtocolStep("flex", on_s, f"{m.upper()} {how}: {MUSCLE_ACTION[m]}", m, m, lv))
             steps.append(ProtocolStep("relax", off_s, "relax", m, m))
         pause()

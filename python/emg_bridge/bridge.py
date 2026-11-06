@@ -10,6 +10,16 @@ Modes:
     play        stream to Unity; needs a calibration
     record      log only, with labelled trials (brief §6 protocol); no packets
 
+Calibration keys (any time in calibrate mode, and in `run` play mode to recalibrate):
+    r   redo the whole calibration (without the gel-settle wait)
+    h   redo only the light / strong holds (keeps rest and MVC)
+    g   accept a calibration that failed its checks and play anyway
+A calibration that fails its checks (or shows an electrode problem) is NOT applied
+automatically: the bridge waits for r / h / g (`awaiting_choice`).
+
+Electrodes: a channel whose envelope stays flat, or whose raw signal sits at the device's
+limit, for `status.electrode_warn_s` raises a warning in the monitor and an `electrode` event.
+
 Filter profiles (dsp/pipeline.py): one runs at a time (`profile`, switch with `set_profile()` or
 the `f` key). Calibration records the raw samples and, when it ends, computes thresholds for every
 profile from that one recording (offline.calibrate_profiles), so any profile can be played.
@@ -32,7 +42,7 @@ from .dsp.filters import MissingHold
 from .dsp.pipeline import Pipeline, default_profile, describe, profile_names
 from .io.shots import ShotTracker
 from .net import protocol as p
-from .offline import assemble, calibrate_profiles
+from .offline import assemble, calibrate_profiles, electrode_problems
 
 STATUS_PRIORITY = ("no_data", "saturated", "flatline", "ok")
 
@@ -91,6 +101,11 @@ class Bridge:
         self._next_calib = 0.0
         self._last_rate_t, self._last_rate_frames, self.frame_rate = 0.0, 0, 0.0
         self.decision = self._make_decision() if calibration else None
+        self.cal_problems: list[str] = []   # why the last calibration was not applied automatically
+        self.cal_accepted = False            # operator pressed g
+        self.warnings: dict[str, str] = {}   # live electrode warnings per channel
+        self._flat_run = np.zeros(2)
+        self._sat_run = np.zeros(2)
 
     def _make_decision(self) -> DecisionMachine:
         d = self.cfg["decision"]
@@ -113,8 +128,12 @@ class Bridge:
         rng = self.source.info.range_v
         self.sat_level = None if not rng else float(st["saturation_fraction"]) * max(abs(rng[0]), abs(rng[1]))
         self.flat_level = float(st["flatline_uv"]) * 1e-6
+        self.electrode_flat = float(st.get("electrode_flat_uv", 0.2)) * 1e-6
         self.flat_frames_needed = int(round(float(st["flatline_s"]) * self.frame_hz))
         self.flat_frames = 0
+        self.electrode_warn_s = float(st.get("electrode_warn_s", 1.0))
+        self._flat_run = np.zeros(n_ch)
+        self._sat_run = np.zeros(n_ch)
         self.no_data_gap = float(st["no_data_gap_s"])
         self.max_missing = float(st.get("max_missing_fraction", 0.25))
         self.expected_n: int | None = None
@@ -191,6 +210,8 @@ class Bridge:
         self.keys.put(ch)
 
     def _handle_key(self, ch: str) -> None:
+        if ch in ("r", "h", "g") and self._calibration_key(ch):
+            return
         if ch in ("\n", "\r", "n") and self.procedure is not None and not self.procedure.done:
             self.procedure.skip(self.now())
             return
@@ -218,6 +239,76 @@ class Bridge:
                     self.mark(f"stop:{self.trial_open}")
                     self.trial_open = None
                     self.trial_index = (self.trial_index + 1) % len(self.trials)
+
+    # --- redo calibration -------------------------------------------------------------------
+    @property
+    def awaiting_choice(self) -> bool:
+        """Calibration finished with a problem: waiting for r / h / g."""
+        return (self.mode == "calibrate" and self.procedure is not None and self.procedure.done
+                and bool(self.cal_problems) and not self.cal_accepted)
+
+    def _calibration_key(self, ch: str) -> bool:
+        if self.procedure is None and self.mode != "play":
+            return False
+        if self.mode == "play" and (self.protocol is not None and self.protocol.index >= 0):
+            self.note("recalibration is not available once the protocol blocks have started (x to stop)")
+            return True
+        if ch == "g":
+            if not self.awaiting_choice:
+                return False
+            if self.calibration is None:
+                self.note("there is no calibration to accept: press r to redo it")
+                return True
+            self.cal_accepted = True
+            self.note("calibration accepted as it is (g)")
+            if self.recorder is not None:
+                self.recorder.event(self.now(), "calibration", "accepted", {"problems": self.cal_problems})
+            return True
+        holds_only = ch == "h"
+        if holds_only and (self.procedure is None or not any(s.kind == "mvc" for s in self.procedure.steps)):
+            return False
+        self.restart_calibration(holds_only=holds_only)
+        return True
+
+    def restart_calibration(self, holds_only: bool = False) -> None:
+        """r: the whole sequence again (no gel-settle wait); h: only the light/strong holds, keeping
+        the rest and MVC recordings. Works during calibration, after it, and in play mode (run)."""
+        old = self.procedure
+        if old is None:
+            from .control.calibration import build_steps
+            steps = build_steps(self.cfg["calibration"])
+            old = Procedure(steps, self.cfg["calibration"], self.frame_hz, self.cfg["envelope"]["method"])
+        now = self.now()
+        if holds_only:
+            if not any(s.kind in ("light", "strong") for s in old.steps):
+                self.note("this calibration has no light/strong holds (--no-comfort): press r to redo it all")
+                return
+            first = next(i for i, s in enumerate(old.steps) if s.kind in ("light", "strong"))
+            first = max(0, first - 1) if old.steps[first - 1].kind == "ready" else first
+            kept = []
+            for s in old.steps[:old.index + 1 if not old.done else len(old.steps)]:
+                if s.kind in ("light", "strong"):
+                    s = type(s)(s.kind, s.seconds, s.prompt, s.muscle, None, s.skippable)  # old holds: not used
+                kept.append(s)
+            redo = old.steps[first:]
+            new = Procedure(kept + redo, old.cfg, old.frame_rate_hz, old.envelope_method, old.units, old.on_step)
+            new.segments = {k: v for k, v in old.segments.items() if not k.startswith(("light_", "strong_"))}
+            new.index = len(kept) - 1
+            new.step_started = now - 1e9   # the next tick starts the first redone step
+            self._cal_starts = {i: n for i, n in self._cal_starts.items() if i < len(kept)}
+            what = "light/strong holds"
+        else:
+            steps = [s for s in old.steps if s.kind != "settle"]
+            new = Procedure(steps, old.cfg, old.frame_rate_hz, old.envelope_method, old.units, old.on_step)
+            self._cal_chunks, self._cal_starts = [], {}
+            what = "whole calibration"
+        self.procedure = new
+        self.mode = "calibrate"
+        self._cal_finished = False
+        self.cal_problems, self.cal_accepted = [], False
+        self.note(f"[{now:8.3f}] REDO {what} (r = all again, h = holds only)")
+        if self.recorder is not None:
+            self.recorder.event(now, "calibration", "redo", {"what": what})
 
     def mark(self, label: str, t: float | None = None) -> None:
         t = self.now() if t is None else t
@@ -295,6 +386,23 @@ class Bridge:
             self.recorder.maybe_flush()
         return frames
 
+    def _electrode_live(self, now: float, c: int, kind: str, bad: bool) -> None:
+        """Raise / clear the live warning for channel c (kind: flat | sat)."""
+        name = self.source.channels[c] if c < len(self.source.channels) else f"ch{c + 1}"
+        key = f"{name}:{kind}"
+        if bad and key not in self.warnings:
+            why = ("flat signal: electrode or lead off?" if kind == "flat"
+                   else "signal at the device's limit: electrode loose?")
+            self.warnings[key] = f"{name.upper()} {why}"
+            self.note(f"[{now:8.3f}] !! {name}: {why}")
+            if self.recorder is not None:
+                self.recorder.event(now, "electrode", "warning", {"muscle": name, "kind": kind})
+        elif not bad and key in self.warnings:
+            del self.warnings[key]
+            self.note(f"[{now:8.3f}] {name}: signal looks normal again")
+            if self.recorder is not None:
+                self.recorder.event(now, "electrode", "ok", {"muscle": name, "kind": kind})
+
     def _reset_dsp(self, n0: int) -> None:
         self.pipeline.reset()
         self.base_n = n0
@@ -326,7 +434,14 @@ class Bridge:
         if self.mode == "calibrate" and self.procedure is not None and not self.procedure.done:
             self._cal_chunks.append((chunk.n0, np.array(chunk.x, dtype=float)))
         x, missing = self.hold.process(chunk.x)
-        sat = (np.abs(x) >= self.sat_level).any(axis=1) if self.sat_level is not None else None
+        sat_ch = (np.abs(x) >= self.sat_level) if self.sat_level is not None else None
+        sat = sat_ch.any(axis=1) if sat_ch is not None else None
+        if sat_ch is not None and n:
+            dt = n / self.fs
+            for c in range(min(self.n_ch, sat_ch.shape[1])):
+                on = sat_ch[:, c].mean() > 0.5
+                self._sat_run[c] = self._sat_run[c] + dt if on else 0.0
+                self._electrode_live(now, c, "sat", self._sat_run[c] >= self.electrode_warn_s)
         ks, env, miss_c, sat_c, y = self.pipeline.process(x, missing.any(axis=1), sat)
 
         with self.lock:
@@ -346,6 +461,10 @@ class Bridge:
             self.flat_frames += 1
         else:
             self.flat_frames = 0
+        if not has_missing:
+            for c in range(min(self.n_ch, len(e))):
+                self._flat_run[c] = self._flat_run[c] + 1.0 / self.frame_hz if e[c] < self.electrode_flat else 0.0
+                self._electrode_live(self.now(), c, "flat", self._flat_run[c] >= self.electrode_warn_s)
         status = ("no_data" if has_missing else "saturated" if saturated
                   else "flatline" if self.flat_frames >= self.flat_frames_needed else "ok")
         valid = not has_missing
@@ -405,10 +524,15 @@ class Bridge:
         proc = self.procedure
         if self.player is not None and hasattr(self.player, "on_calibration_done"):
             self.player.on_calibration_done()
+        problems = self._electrode_check()
         if proc.error:
+            self.cal_problems = [proc.error] + problems
             self.note(f"CALIBRATION FAILED: {proc.error}")
+            for msg in problems:
+                self.note(f"!! electrode: {msg}")
+            self.note("press r to redo the calibration (fix the electrodes first), or x to quit")
             if self.recorder is not None:
-                self.recorder.event(now, "calibration", "failed", {"error": proc.error})
+                self.recorder.event(now, "calibration", "failed", {"error": proc.error, "electrodes": problems})
             return
         cals = self._calibrate_all_profiles()
         if cals is None or self.profile not in cals.names:
@@ -426,8 +550,30 @@ class Bridge:
         for line in cal.summary_lines():
             self.note(line)
         self.note(f"thresholds for filter profiles: {', '.join(cals.names)} (f switches)")
+        for msg in problems:
+            self.note(f"!! electrode: {msg}")
+        self.cal_problems = list(problems)
         if not cal.checks_passed:
-            self.note("!! validation failed: redo with more distinct light and strong efforts (brief §4.4)")
+            self.cal_problems.append("light and strong holds too similar (or light too weak)")
+            self.note("!! validation failed: light and strong must be clearly different (brief §4.4)")
+        if self.cal_problems:
+            self.note("press  h = redo light/strong holds  ·  r = redo everything  ·  g = play anyway")
+            if self.recorder is not None:
+                self.recorder.event(now, "calibration", "problems", {"problems": self.cal_problems})
+
+    def _electrode_check(self) -> list[str]:
+        if not self._cal_chunks or self.procedure is None:
+            return []
+        try:
+            n0, x = assemble(self._cal_chunks)
+            steps = self.procedure.steps
+            starts = [self._cal_starts.get(i, n0) for i in range(len(steps))]
+            end = self.expected_n if self.expected_n is not None else n0 + len(x)
+            return electrode_problems(x, n0, self.fs, steps, starts, end, list(self.source.channels), self.sat_level,
+                                      float(self.cfg["status"].get("flatline_uv", 0.5)))
+        except Exception as e:  # a check must never break the calibration
+            self.note(f"electrode check skipped: {e}")
+            return []
 
     def _calibrate_all_profiles(self) -> CalibrationSet | None:
         """The calibration recording through every profile (offline.calibrate_profiles)."""
@@ -444,7 +590,6 @@ class Bridge:
             return None
         for name, err in errors.items():
             self.note(f"profile {name}: no calibration ({err})")
-        self._cal_chunks = []
         return cals
 
     def enter_play(self) -> None:
@@ -452,7 +597,7 @@ class Bridge:
         if self.calibration is None:
             raise RuntimeError("no calibration")
         self.mode = "play"
-        self.procedure = None
+        self._cal_chunks = []    # free the calibration recording (r in play mode starts a new one)
         self.decision = self._make_decision()
         self._next_calib = 0.0
         if self.recorder is not None:
@@ -462,7 +607,10 @@ class Bridge:
 
     @property
     def calibration_done(self) -> bool:
-        return self.procedure is not None and self.procedure.done
+        """Calibration finished and either clean or accepted (g). While a problem waits for
+        r / h / g this stays False, so `run` does not start playing on a bad calibration."""
+        return (self.procedure is not None and self.procedure.done and self.mode == "calibrate"
+                and (not self.cal_problems or self.cal_accepted))
 
     def run(self, duration: float | None = None, poll_s: float = 0.002, on_step: Callable[["Bridge"], None] | None = None,
             until: Callable[["Bridge"], bool] | None = None) -> None:
@@ -511,7 +659,13 @@ class Bridge:
             sig = np.array(self.sig_buf) if self.sig_buf else np.zeros((0, 3))
             fr = np.array(self.frame_buf) if self.frame_buf else np.zeros((0, 6))
             messages = list(self.messages)
-        prompt = self.procedure.prompt(self.now()) if self.procedure is not None and not self.procedure.done else ""
+        prompt = (self.procedure.prompt(self.now()) if self.procedure is not None and not self.procedure.done
+                  and self.mode == "calibrate" else "")
+        if self.warnings:
+            prompt = "⚠ " + "  ·  ".join(self.warnings.values()) + (f"   |   {prompt}" if prompt else "")
+        if self.awaiting_choice:
+            prompt = ("CALIBRATION PROBLEM: " + "; ".join(self.cal_problems)[:140]
+                      + "   ·   h = redo holds   r = redo all   g = play anyway")
         if not prompt and self.protocol is not None and not self.protocol.done and self.mode == "play":
             prompt = self.protocol.prompt(self.now())
         return {"signal": sig, "frames": fr, "last": self.last_frame, "prompt": prompt, "profile": self.profile,
@@ -519,7 +673,7 @@ class Bridge:
                 "calibration": self.calibration, "frame_rate": self.frame_rate,
                 "fs_measured": self.recorder.fs_measured if self.recorder is not None else None,
                 "rtt_ms": self.sender.round_trip.latest_ms if self.sender is not None else None,
-                "messages": messages, "mode": self.mode, "silent": self.source_silent,
+                "messages": messages, "mode": self.mode, "warnings": dict(self.warnings), "silent": self.source_silent,
                 "player": self.player.describe() if self.player is not None else ""}
 
     def status_line(self) -> str:
