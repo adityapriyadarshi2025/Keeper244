@@ -80,6 +80,7 @@ status:                        # sensor status sent in every packet (brief §4.7
   flatline_s: 1.0
   electrode_flat_uv: 0.2        # one channel's envelope below this ... (a lead that is off reads ~0; real rest is 0.6-3 µV)
   electrode_warn_s: 1.0         # ... or at the device limit for this long -> live warning + 'electrode' event
+  game_input_check_s: 4.0       # keeper slot changed but the game never echoed it for this long -> 'set INPUT to EMG' warning
   no_data_gap_s: 0.150         # source silent this long: log a gap and stop sending (Unity shows NO SIGNAL)
   max_missing_fraction: 0.25   # an envelope window with more missing samples is not trusted (status no_data)
 
@@ -133,6 +134,7 @@ protocol:                      # python -m emg_bridge protocol (brief §6): >= 5
   levels: [light, strong]      # alternate
   game_block_s: 300            # per filter profile below
   game_profiles: [full, raw, bandpass]   # rotate the order between participants
+  game_level: L2               # the level to play in game blocks (--no-comfort switches to L1, 3 zones)
   break_s: 60                  # between blocks; Enter skips
 
 monitor:

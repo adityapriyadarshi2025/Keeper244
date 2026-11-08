@@ -106,6 +106,12 @@ class Bridge:
         self.warnings: dict[str, str] = {}   # live electrode warnings per channel
         self._flat_run = np.zeros(2)
         self._sat_run = np.zeros(2)
+        # is the game actually driven by our packets? (6 Nov: P07's game was left on Keyboard)
+        self.input_check_s = float(cfg.get("status", {}).get("game_input_check_s", 4.0))
+        self._level_on = False
+        self._last_slot_sent: float | None = None
+        self._last_applied: float | None = None
+        self._prev_sent_slot = 0
 
     def _make_decision(self) -> DecisionMachine:
         d = self.cfg["decision"]
@@ -336,6 +342,7 @@ class Bridge:
                     self.recorder.event(now, "calibration", s.kind, {"muscle": s.muscle, "seconds": s.seconds})
             if self.procedure.done and self.mode == "calibrate" and not getattr(self, "_cal_finished", False):
                 self._finish_calibration(now)
+        self._check_game_input(now)
         if self.protocol is not None and self.mode == "play":
             before = self.protocol.index
             self.protocol.tick(now)
@@ -385,6 +392,19 @@ class Bridge:
         if self.recorder is not None:
             self.recorder.maybe_flush()
         return frames
+
+    def _check_game_input(self, now: float) -> None:
+        """A level is running and the keeper slot we sent changed, but the game never echoed a
+        slot_applied: the game is not using EMG (INPUT left on Keyboard). Warn in red."""
+        if self.mode != "play" or not self._level_on or self._last_slot_sent is None:
+            return
+        stale = now - self._last_slot_sent > self.input_check_s
+        unanswered = self._last_applied is None or self._last_applied < self._last_slot_sent
+        if stale and unanswered and "game:input" not in self.warnings:
+            self.warnings["game:input"] = "GAME IS NOT USING EMG: set INPUT to 'EMG over UDP' in the game menu"
+            self.note(f"[{now:8.3f}] !! the game is not following the EMG (INPUT on Keyboard?)")
+            if self.recorder is not None:
+                self.recorder.event(now, "status", "game_not_using_emg", {})
 
     def _electrode_live(self, now: float, c: int, kind: str, bad: bool) -> None:
         """Raise / clear the live warning for channel c (kind: flat | sat)."""
@@ -486,6 +506,9 @@ class Bridge:
         if self.mode == "play" and self.sender is not None:
             seq = self.sender.send_emg(t, float(a[0]), float(a[1]), slot, rest, status)
             self.packets += 1
+            if slot != self._prev_sent_slot:
+                self._last_slot_sent = self.now()
+                self._prev_sent_slot = slot
         frame = Frame(k, t, e.copy(), np.asarray(a, dtype=float).copy(), slot, rest, status, valid, seq)
         self.frames_total += 1
         self.last_frame = frame
@@ -500,6 +523,8 @@ class Bridge:
     def _on_game_message(self, t: float, msg: dict[str, Any]) -> None:
         mtype, name = msg.get("type"), msg.get("name")
         if mtype == "event" and name == "slot_applied":
+            self._last_applied = t
+            self.warnings.pop("game:input", None)
             if self.sender is not None:
                 rtt = self.sender.round_trip.echoed(int(msg["seq"]))
                 if rtt is not None and self.recorder is not None:
@@ -511,6 +536,10 @@ class Bridge:
             self.note(f"[{t:8.3f}] mark from the game: {msg.get('label')}")
             return
         if mtype == "event":
+            if name == "level_start":
+                self._level_on = True
+            elif name == "level_end":
+                self._level_on = False
             if name in ("level_start", "level_end", "shot_void"):
                 self.note(f"[{t:8.3f}] {name} " + " ".join(f"{k}={v}" for k, v in msg.items() if k not in ("type", "name")))
             row = self.shots.on_event(t, msg)

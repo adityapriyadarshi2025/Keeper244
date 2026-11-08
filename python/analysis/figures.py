@@ -504,7 +504,11 @@ def game_table(s: Session) -> pd.DataFrame:
             e = s.env_between(*blk)
             if len(e) > 1:
                 jitter = float((e["slot"].diff().fillna(0) != 0).sum() / ((e["t"].iloc[-1] - e["t"].iloc[0]) / 60))
+        tgt = pd.to_numeric(g["target_slot"], errors="coerce")
+        kp = pd.to_numeric(g["bridge_slot_at_arrival"], errors="coerce")
+        side = (np.sign(tgt) == np.sign(kp))[tgt.notna() & kp.notna()]   # 5-zone shots scored as 3 zones
         rows.append({"profile": prof, "shots": len(g), "save_%": 100 * float(saved.mean()),
+                     "correct_side_%": 100 * float(side.mean()) if len(side) else np.nan,
                      "reaction_time_median_ms": 1000 * float(rt.median()) if rt.notna().any() else np.nan,
                      "wrong_direction_%": 100 * float(pd.to_numeric(g["wrong_direction"], errors="coerce").mean()),
                      "overshoot_%": 100 * float(pd.to_numeric(g["overshoot"], errors="coerce").mean()),
@@ -517,7 +521,8 @@ def game_table(s: Session) -> pd.DataFrame:
 def fig_game_by_profile(s: Session, out: Path) -> dict:
     df = game_table(s)
     df.to_csv(out / "10_game_by_profile.csv", index=False)
-    metrics = [("save_%", "saves (%)", "higher is better"), ("reaction_time_median_ms", "reaction time, median (ms)", "lower is better"),
+    metrics = [("save_%", "saves (%)", "higher is better"), ("correct_side_%", "correct side, 3-zone scoring (%)", "higher is better"),
+               ("reaction_time_median_ms", "reaction time, median (ms)", "lower is better"),
                ("wrong_direction_%", "first move wrong way (%)", "lower is better"),
                ("slot_changes_per_min", "keeper moves per minute", "same shots: fewer = steadier")]
     fig, axes = plt.subplots(1, len(metrics), figsize=style.WIDE)

@@ -145,3 +145,19 @@ def test_live_warning_when_an_electrode_comes_off_during_play(tmp_path):
     b.close()
     ev = [(e["type"], e["name"]) for e in csv.DictReader(open(b.recorder.dir / "events.csv"))]
     assert ("electrode", "warning") in ev and ("electrode", "ok") in ev
+
+
+def test_warns_when_the_game_is_not_using_emg(tmp_path):
+    """6 Nov: P07's game blocks ran with the game's INPUT on Keyboard: no EMG shots at all."""
+    from emg_bridge.simgame import NullSender
+    b, src, clock, player = calibrating_bridge(tmp_path)
+    assert run_until(b, clock, lambda: b.calibration_done)
+    b.sender = NullSender(clock)
+    b.enter_play()
+    b._on_game_message(clock.t, {"type": "event", "name": "level_start", "level": "L1"})
+    src.set_drive(0.8, 0.0)                       # biceps flex: the slot we send changes
+    run_until(b, clock, lambda: False, 6.0)
+    assert "game:input" in b.warnings and "EMG over UDP" in b.snapshot()["prompt"]
+    b._on_game_message(clock.t, {"type": "event", "name": "slot_applied", "seq": b.sender.seq})
+    assert "game:input" not in b.warnings
+    b.close()

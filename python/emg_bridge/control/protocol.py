@@ -69,13 +69,14 @@ def build_protocol(cfg: dict[str, Any], game_profiles: list[str] | None = None,
             steps.append(ProtocolStep("relax", off_s, "relax", m, m))
         pause()
     if "game" in want:
+        lvl = str(cfg.get("game_level", "L2"))
         for prof in game_profiles or list(cfg.get("game_profiles", ["full", "raw", "bandpass"])):
             mins = float(cfg["game_block_s"]) / 60
             steps.append(ProtocolStep("ready", max(ready_s, 10.0),
-                                      f"Next: {mins:g} min of GAME with filters '{prof}'. Operator: start L2 in Unity "
+                                      f"Next: {mins:g} min of GAME with filters '{prof}'. Operator: check INPUT = EMG over UDP, start {lvl} "
                                       "(Enter starts the block now)", profile=prof, skippable=True))
             steps.append(ProtocolStep("game", float(cfg["game_block_s"]),
-                                      f"GAME, filters '{prof}': play L2 (start it again when it ends)",
+                                      f"GAME, filters '{prof}': play {lvl} (start it again when it ends)",
                                       block=f"game_{prof}", profile=prof))
             pause()
     if steps and steps[-1].kind == "break":

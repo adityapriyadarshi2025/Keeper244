@@ -167,6 +167,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "protocol":
         from .control.protocol import ProtocolRunner, build_protocol
         pcfg = dict(cfg["protocol"])
+        if args.no_comfort:   # no light/strong holds -> 3-zone game (L1)
+            pcfg["game_level"] = "L1"
         if args.short:
             pcfg.update(rest_s=30, contraction_block_s=30, game_block_s=30, break_s=5)
         order = [x.strip() for x in args.game_profiles.split(",")] if args.game_profiles else None
